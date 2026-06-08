@@ -41,13 +41,7 @@
 ---
 ## 🚀 快速启动
 
-**方式一：一键启动**
-```
-双击 一键启动.bat
-```
-
-**方式二：手动启动**
-```bash
+`ash
 # 1. 安装依赖
 pip install -r requirements.txt
 
@@ -60,10 +54,7 @@ python app.py
 
 # 4. 启动前端（端口 3001）
 python server.py
-```
-浏览器访问 `http://localhost:3001`
-
----
+``n浏览器访问 http://localhost:3001`n
 ## 📁 项目结构
 
 ```
