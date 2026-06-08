@@ -39,22 +39,6 @@
 **前端**: React 18（CDN）· Babel Standalone（JSX）· Vanta.js（3D 背景）· Spline
 
 ---
-## 🚀 快速启动
-
-`ash
-# 1. 安装依赖
-pip install -r requirements.txt
-
-# 2. 配置 API Key（编辑 .env 文件）
-DEEPSEEK_API_KEY=你的DeepSeek密钥
-DEEPSEEK_MODEL=deepseek-chat
-
-# 3. 启动后端（端口 5000）
-python app.py
-
-# 4. 启动前端（端口 3001）
-python server.py
-``n浏览器访问 http://localhost:3001`n
 ## 📁 项目结构
 
 ```
