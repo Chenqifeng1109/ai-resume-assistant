@@ -1,0 +1,43 @@
+﻿# 环境变量（包含API密钥，绝对不能上传）
+.env
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller 打包产物
+AI简历助手包/
+AI简历助手封装包/
+最终版/
+
+# 虚拟环境
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 日志（运行时生成）
+logs/*.txt
+logs/*.log
+!logs/.gitkeep
+
+# 运行时数据
+data/*.json
+!data/.gitkeep
+
+# 简历原始文件（隐私）
+resumes/*.docx
+resumes/*.pdf
+!resumes/test.txt
+
+# 证件照（隐私）
+photos/*.jpg
+photos/*.jpeg
+photos/*.png

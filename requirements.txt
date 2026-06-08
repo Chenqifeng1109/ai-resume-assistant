@@ -1,0 +1,12 @@
+# ============================================
+# 项目依赖清单（pip install -r requirements.txt 一键安装）
+# ============================================
+openai>=1.0.0          # 调用 DeepSeek API（兼容 OpenAI 格式）
+python-dotenv>=1.0.0   # 读取 .env 配置文件
+playwright>=1.40.0     # 浏览器自动化（操控招聘网站）
+pandas>=2.0.0          # 数据处理 & 报表
+openpyxl>=3.1.0        # Excel 文件读写
+reportlab>=4.0.0       # PDF 生成
+fastapi>=0.110.0       # 网页后端
+uvicorn>=0.27.0        # 网页服务器
+python-multipart>=0.0.9 # 文件上传支持

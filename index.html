@@ -1,0 +1,56 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chen</title>
+  <link rel="stylesheet" href="/src/styles/global.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Favicon -->
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>C</text></svg>' />
+  <script type="module" src="https://unpkg.com/@splinetool/viewer@1.12.97/build/spline-viewer.js"></script>
+  <!-- Vanta.js for 3D backgrounds -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.net.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.dots.min.js"></script>  <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.globe.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel Standalone for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Components -->
+  <script type="text/babel" src="/src/components/Navbar.jsx?v=2"></script>
+  <script type="text/babel" src="/src/components/Hero.jsx?v=2"></script>
+  <script type="text/babel" src="/src/components/AIAssistant.jsx?v=2"></script>
+  <script type="text/babel" src="/src/components/Projects.jsx?v=2"></script>
+  <script type="text/babel" src="/src/components/Strengths.jsx?v=2"></script>
+  <script type="text/babel" src="/src/components/Footer.jsx?v=2"></script>
+  <script type="text/babel" src="/src/App.jsx?v=2"></script>
+
+  <!-- Section fade-in observer -->
+  <script>
+  document.addEventListener("DOMContentLoaded", function(){
+    var sections = document.querySelectorAll(".section");
+    sections.forEach(function(s){ s.classList.add("section-enter"); });
+    var observer = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){
+          e.target.classList.remove("section-enter");
+          e.target.classList.add("section-visible");
+        }
+      });
+    }, { threshold: 0.1 });
+    sections.forEach(function(s){ observer.observe(s); });
+  });
+  </script>
+</body>
+</html>
+
+
+

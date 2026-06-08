@@ -1,0 +1,129 @@
+:root {
+  --bg-deep: #050508;
+  --bg-surface: #0a0a12;
+  --bg-card: #0f0f1a;
+  --bg-card-hover: #141428;
+  --border: #1e1e32;
+  --border-light: #282845;
+  --accent: #00d4ff;
+  --accent2: #7c4dff;
+  --accent-glow: rgba(0, 212, 255, 0.15);
+  --text: #e4e4ec;
+  --text-dim: #7c7c94;
+  --text-muted: #4a4a5e;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --max-width: 1700px;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-sans: "Inter", "SF Pro Display", -apple-system, sans-serif;
+}
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-deep);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+
+.container { max-width: var(--max-width); margin: 0 auto; padding: 0 60px; }
+.section { padding: 120px 0; position: relative; }
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+.section-title {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 20px;
+}
+.section-desc {
+  font-size: 18px;
+  color: var(--text-dim);
+  max-width: 600px;
+  line-height: 1.7;
+}
+
+.glass {
+  background: rgba(15, 15, 26, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+}
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 14px 32px; border-radius: 50px; font-size: 15px;
+  font-weight: 600; cursor: pointer; transition: var(--transition);
+  text-decoration: none; border: none; font-family: var(--font-sans);
+}
+.btn-primary {
+  background: var(--accent); color: #000;
+  box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+}
+.btn-primary:hover { box-shadow: 0 0 50px rgba(0, 212, 255, 0.5); transform: translateY(-2px); }
+.btn-outline {
+  background: transparent; color: var(--text);
+  border: 1px solid var(--border-light);
+}
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+
+@media (max-width: 1200px) { .container { padding: 0 32px; } .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 768px) { .container { padding: 0 20px; } .grid-2, .grid-3 { grid-template-columns: 1fr; } .section { padding: 80px 0; } }
+
+/* Smooth section transitions */
+.section {
+  position: relative;
+  scroll-margin-top: 80px;
+}
+
+/* Smooth section transitions and scroll */
+html {
+  scroll-behavior: smooth;
+}
+.section {
+  opacity: 1;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.section.section-enter {
+  opacity: 0;
+  transform: translateY(30px);
+}
+.section.section-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Section color transitions */
+#首页 { scroll-margin-top: 0; }
+#作品 { scroll-margin-top: 80px; }
+#功能 { scroll-margin-top: 80px; }
+#优势 { scroll-margin-top: 80px; }
+#联系 { scroll-margin-top: 80px; }
+
+.section {
+  transition: background-color 0.8s ease, border-color 0.5s ease;
+}
+
+/* Section-specific backgrounds */
+#作品.section { /* Projects - dark surface */ }
+#功能.section { /* AIAssistant - slightly different */ }
+

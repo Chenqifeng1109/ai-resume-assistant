@@ -1,0 +1,565 @@
+/* ============================================
+   style.css — 科技风 UI 样式
+   配色: 深空黑底 + 青霓虹 + 紫色渐变
+   ============================================ */
+
+/* ---------- 全局重置 ---------- */
+*, *::before, *::after {
+    margin: 0; padding: 0; box-sizing: border-box;
+}
+
+:root {
+    --bg-deep:   #06060e;
+    --bg-card:   rgba(12, 14, 28, 0.85);
+    --bg-panel:  rgba(16, 18, 38, 0.9);
+    --accent:    #00e5ff;
+    --accent2:   #7c4dff;
+    --accent3:   #ff4081;
+    --success:   #00e676;
+    --warning:   #ffab00;
+    --text:      #e0e0e0;
+    --text-dim:  #8892b0;
+    --border:    rgba(0, 229, 255, 0.15);
+    --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.3);
+    --glow-purple: 0 0 20px rgba(124, 77, 255, 0.3);
+    --radius:    12px;
+    --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---------- 粒子背景画布 ---------- */
+#particleCanvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    pointer-events: none;
+}
+
+/* ---------- 主布局 ---------- */
+#app {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* ---------- 顶部状态栏 ---------- */
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    flex-shrink: 0;
+}
+
+.topbar .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar .logo .icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    box-shadow: var(--glow-cyan);
+}
+
+.topbar .logo h1 {
+    font-size: 20px;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+}
+
+.topbar .stats {
+    display: flex;
+    gap: 28px;
+}
+
+.topbar .stat-item {
+    text-align: center;
+}
+
+.topbar .stat-item .val {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+
+.topbar .stat-item .lbl {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.topbar .status-dot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+}
+
+.topbar .status-dot .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 10px var(--success);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ---------- 主体三栏布局 ---------- */
+.main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ---------- 左侧步骤导航 ---------- */
+.sidebar {
+    width: 300px;
+    flex-shrink: 0;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.steps-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+}
+
+.steps-container::-webkit-scrollbar {
+    width: 4px;
+}
+.steps-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+.steps-container::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+.step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 20px;
+    cursor: pointer;
+    transition: var(--transition);
+    position: relative;
+    border-left: 2px solid transparent;
+}
+
+.step-item:hover {
+    background: rgba(0, 229, 255, 0.04);
+}
+
+.step-item.active {
+    background: rgba(0, 229, 255, 0.08);
+    border-left-color: var(--accent);
+}
+
+.step-item.completed {
+    opacity: 0.7;
+}
+
+.step-item .step-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    transition: var(--transition);
+}
+
+.step-item.pending .step-icon {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-dim);
+}
+
+.step-item.in_progress .step-icon {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #000;
+    box-shadow: var(--glow-cyan);
+    animation: iconPulse 2s infinite;
+}
+
+.step-item.done .step-icon {
+    background: rgba(0, 230, 118, 0.15);
+    color: var(--success);
+}
+
+@keyframes iconPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(0, 229, 255, 0.4); }
+    50% { box-shadow: 0 0 20px rgba(0, 229, 255, 0.7); }
+}
+
+.step-item .step-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.step-item .step-name {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.step-item .step-detail {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+
+.step-item .step-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+.step-item .badge-done { background: rgba(0, 230, 118, 0.15); color: var(--success); }
+.step-item .badge-progress { background: rgba(0, 229, 255, 0.15); color: var(--accent); }
+.step-item .badge-pending { background: rgba(136, 146, 176, 0.1); color: var(--text-dim); }
+
+/* ---------- 中央操作区 ---------- */
+.center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.center-header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.center-header h2 {
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.center-header .subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+}
+
+.center-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    backdrop-filter: blur(10px);
+    transition: var(--transition);
+}
+
+.card:hover {
+    border-color: rgba(0, 229, 255, 0.3);
+    box-shadow: var(--glow-cyan);
+}
+
+.card h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--accent);
+    letter-spacing: 1px;
+}
+
+/* 进度环 */
+.progress-ring-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+}
+
+.progress-ring {
+    position: relative;
+    width: 160px; height: 160px;
+}
+
+.progress-ring svg {
+    transform: rotate(-90deg);
+}
+
+.progress-ring .bg-circle {
+    fill: none;
+    stroke: rgba(255,255,255,0.05);
+    stroke-width: 6;
+}
+
+.progress-ring .fg-circle {
+    fill: none;
+    stroke: url(#gradient);
+    stroke-width: 6;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s ease;
+}
+
+.progress-ring .percent {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 32px;
+    font-weight: 700;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    color: var(--accent);
+}
+
+.progress-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.progress-info .pi-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    min-width: 140px;
+}
+
+.progress-info .pi-row .pi-val {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* 按钮 */
+.btn {
+    padding: 10px 24px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    letter-spacing: 1px;
+}
+
+.btn:hover {
+    background: rgba(0, 229, 255, 0.1);
+    box-shadow: var(--glow-cyan);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #000;
+    border: none;
+    font-weight: 700;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 0 30px rgba(0, 229, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+/* ---------- 右侧日志面板 ---------- */
+.log-panel {
+    width: 340px;
+    flex-shrink: 0;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+}
+
+.log-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.log-header .live-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+    animation: pulse 1.5s infinite;
+}
+
+.log-stream {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.log-stream::-webkit-scrollbar {
+    width: 4px;
+}
+.log-stream::-webkit-scrollbar-track {
+    background: transparent;
+}
+.log-stream::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+.log-entry {
+    padding: 6px 10px;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    display: flex;
+    gap: 10px;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.log-entry .log-time {
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+
+.log-entry .log-level {
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.log-entry .log-msg {
+    color: var(--text);
+    word-break: break-all;
+}
+
+.log-entry.log-success { background: rgba(0, 230, 118, 0.05); border-left: 2px solid var(--success); }
+.log-entry.log-info    { border-left: 2px solid var(--accent); }
+.log-entry.log-warning { background: rgba(255, 171, 0, 0.05); border-left: 2px solid var(--warning); }
+.log-entry.log-error   { background: rgba(255, 64, 129, 0.05); border-left: 2px solid var(--accent3); }
+
+.log-entry .log-level.level-success { color: var(--success); }
+.log-entry .log-level.level-info    { color: var(--accent); }
+.log-entry .log-level.level-warning { color: var(--warning); }
+.log-entry .log-level.level-error   { color: var(--accent3); }
+
+/* ---------- 页脚 ---------- */
+.footer {
+    padding: 8px 24px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* REMOVED */ @keyframes spin-old { to { transform: rotate(360deg); } }
+@keyframes glow { 0%,100% { box-shadow: 0 0 5px var(--accent); } 50% { box-shadow: 0 0 20px var(--accent), 0 0 40px var(--accent2); } }
+.btn-glow {
+  padding: 10px 24px;
+  border: 2px solid var(--accent);
+  background: linear-gradient(135deg, rgba(0,229,255,0.15), rgba(124,77,255,0.15));
+  color: #fff;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.btn-glow:hover {
+  background: linear-gradient(135deg, rgba(0,229,255,0.3), rgba(124,77,255,0.3));
+  box-shadow: 0 0 20px var(--accent);
+  transform: translateY(-2px);
+}
+.score-stat:hover {
+  transform: translateY(-3px);
+  transition: transform 0.3s;
+}
+.mtab.active {
+  background: linear-gradient(135deg, rgba(0,229,255,0.2), rgba(124,77,255,0.2));
+  color: #fff;
+  border-bottom: 2px solid var(--accent);
+}
+.mtab:not(.active):hover {
+  background: rgba(255,255,255,0.05);
+}
+.job-card:hover {
+  border-color: var(--accent) !important;
+}
+
+@keyframes progressPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+
+@keyframes progressAnim30 { 0% { width: 0%; } 50% { width: 60%; } 80% { width: 85%; } 100% { width: 92%; } }
+@keyframes progressAnim15 { 0% { width: 0%; } 50% { width: 55%; } 80% { width: 82%; } 100% { width: 90%; } }
+@keyframes progressAnim5  { 0% { width: 0%; } 60% { width: 70%; } 100% { width: 88%; } }
+@keyframes progressAnim60 { 0% { width: 0%; } 40% { width: 50%; } 70% { width: 78%; } 100% { width: 90%; } }
+.progress-bar { width: 80%; max-width: 400px; height: 8px; background: rgba(255,255,255,0.06); border-radius: 10px; margin: 0 auto 12px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #a78bfa); border-radius: 10px; }
+.progress-bar-fill.a30 { animation: progressAnim30 30s ease-out forwards; }
+.progress-bar-fill.a15 { animation: progressAnim15 15s ease-out forwards; }
+.progress-bar-fill.a5  { animation: progressAnim5 5s ease-out forwards; }
+.progress-bar-fill.a60 { animation: progressAnim60 60s ease-out forwards; }
+
+}
