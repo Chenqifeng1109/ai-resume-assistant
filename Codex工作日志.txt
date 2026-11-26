@@ -227,3 +227,1215 @@
   - 6套模板修复（因文件恢复丢失后重新应用）
   - app.py步骤描述同步更新
 
+
+[2026-07-14] 将个人编码规矩封装并安装为 Codex Skill
+
+用户需求：
+  读取项目日志，理解用户长期使用习惯和硬性规则，将其封装成一个下次可直接调用的 Codex skill，并安装到当前 Codex。
+
+规则依据：
+  - 全局控制台.txt
+  - 全局复利踩坑日志.txt
+  - Codex工作日志.txt
+
+安装结果：
+  - 调用名：$mr-safe-coding-workflow
+  - 安装目录：C:\Users\MR\.codex\skills\mr-safe-coding-workflow
+  - 核心规则：改前读日志、改前备份、精确修补、板块隔离、禁止越界修复、UTF-8 无 BOM、分层自检、失败复盘、两次改动后保守清理
+  - 附带脚本：scripts\backup_file.ps1（按源文件相对路径备份，每个文件保留最近5份）
+
+验证：
+  1. skill-creator quick_validate：通过
+  2. PowerShell 备份脚本语法解析：0错误
+  3. 备份脚本真实执行：通过
+  4. SKILL.md / openai.yaml / rules.md / backup_file.ps1：均为 UTF-8 无 BOM
+  5. 初始化 TODO 扫描：无残留
+  6. 备份保留策略实测：连续执行7次后准确保留最新5份
+
+自纠错：
+  - 最初把“项目优化评审”混入 skill 生成范围，用户纠正后改为只以三份日志为主要依据生成一个个人工作流 skill。
+  - 元数据初始化时先后遇到短描述长度不足、Windows 默认 GBK 无法读取中文 UTF-8；改为满足 25-64 字符约束并强制 Python UTF-8 模式后通过。
+  - 最终检查发现 Copy-Item 保留源时间会影响按 LastWriteTime 清理旧备份；已精确改为按备份文件名中的毫秒时间戳排序并完成7留5实测。
+
+[2026-07-14] 修正 Skill 的 Codex 桌面安装位置
+
+现象：用户在插件列表中找不到已生成的 skill。
+根因：初次安装到了 C:\Users\MR\.codex\skills；当前 Codex 用户 skill 扫描目录为 C:\Users\MR\.agents\skills，且 skill 与 plugin 是不同的产品表面。
+处理：将 mr-safe-coding-workflow 复制到 C:\Users\MR\.agents\skills\mr-safe-coding-workflow，保留旧目录作为备份来源。
+结果：正确用户 skill 目录已包含 SKILL.md、agents/openai.yaml、references/rules.md、scripts/backup_file.ps1。
+
+
+
+[2026-07-14] OfferForge 2.0 第一步：修复 modules/deliver_manager.py 混合编码
+现象：文件包含 UTF-8 与 GBK 字节，严格 UTF-8 读取失败。
+处理：先备份到 backups/phase0-deliver_manager.py.bak，仅转换异常字节段为 UTF-8，不改业务逻辑。
+验证：UTF-8 读取通过，Python AST 语法检查通过。
+
+[2026-07-14] OfferForge 2.0：整理 batch-score 重复路由
+处理：保留 /api/jobs/batch-score、/api/jobs/batch-score-json、/api/jd/batch-match 三个明确接口；移除误挂到 JSON/JD 函数上的重复 batch-score 装饰器。
+验证：AST_OK；batch-score 路由数量=1；重复路径=0。
+
+[2026-07-14] OfferForge 2.0 启动入口加固
+请求与范围：继续第一阶段，仅修改 start.bat。
+备份：backups\start_20260714_203406529.bat.bak；日志亦已备份。
+实现：自动切换项目目录；检查 Python、app.py、FastAPI/Uvicorn/multipart 和 frontend/dist/index.html；失败时显示解决命令并返回 1；保留原来的 python app.py 启动方式。
+验证：UTF-8 无 BOM；核心依赖导入通过；前端构建存在；模拟缺失 Python 返回 1；真实启动成功；GET / 返回 200 且包含 React root；测试服务已正常关闭。
+结果：通过。
+
+[2026-07-14] OfferForge 2.0 小问题收尾：依赖、后端与前端质量检查
+范围：requirements.txt 只读核验；前端 Hero、Projects、Navbar、Strengths、Footer、AIAssistant、JobMarket。
+备份：上述组件均由 mr-safe-coding-workflow 备份到 backups/frontend/src/components；日志追加前已备份。
+变更：删除未使用 Hook 导入和失效的旧岗位采集状态代码；移除 6 个嵌入 BOM；删除 Footer 重复 position 键；未使用异常参数改为 catch。未修改页面设计及有效业务接口。
+检查：pip check 通过；9 个 Python 文件 AST 通过；33 条路由无重复；前端 lint 由 45 条警告降为 0；Vite build 通过；HTML/JS/CSS 200；Edge 页面渲染成功、控制台 0 错误；/api/resumes/list 200。
+结果：小问题质量基线通过。requirements.txt 本身为 UTF-8，未做不必要修改。
+
+[2026-07-14] OfferForge 2.0 正式底层架构优化：建立 routers 路由层
+范围：app.py；新增 routers/__init__.py、routers/system.py。
+备份：backups\app_20260714_204652475.py.bak；日志追加前已备份。
+变更：把 /api/status、步骤开始、步骤完成三个系统接口从巨型 app.py 迁移到 APIRouter 工厂；通过显式传入 STEPS、STATS、DATA_DIR、add_log 避免循环导入；app.py 只负责注册路由。
+验证：3 个文件 AST 通过；路由无重复；系统状态返回7个步骤；合法步骤 start/complete 通过；不存在步骤保持 ok=false；服务正常启动关闭。
+结果：第一块路由拆分通过。未处理观察：app.py 仍有未引用的旧 INDEX_HTML 和其他业务域，后续按独立批次继续迁移。
+
+[2026-07-14] OfferForge 2.0 底层清理：删除未引用的旧 INDEX_HTML
+范围：仅 app.py。
+备份：backups\app_20260714_211300868.py.bak；日志追加前已备份。
+变更：删除 React/Vite 接管前遗留的 131 行内嵌 HTML；现役 frontend/dist 托管逻辑未改。
+验证：AST 通过；INDEX_HTML 引用数=0；app.py 从3501行降至3370行；系统路由仍注册；真实启动通过；GET / 200 且含 React root；GET /api/status 200 JSON；服务正常关闭。
+结果：通过。
+
+[2026-07-14] OfferForge 2.0 底层清理：删除重复 batch_score_jobs 函数
+范围：仅 app.py。
+备份：backups\app_20260714_211553520.py.bak；三份日志追加前已备份。
+变更：删除第二个无路由装饰器、与第一份参数和函数体完全相同的 batch_score_jobs，共177行；保留第一份 POST /api/jobs/batch-score 实现。
+验证：AST通过；app.py 3370降至3193行；重复顶层函数名=0；batch-score函数=1且有1个装饰器；路由=1；服务启动通过；缺少岗位文件错误路径返回 ok=false；/api/status 200；服务正常关闭。
+结果：通过。
+
+[2026-07-15] OfferForge 2.0 底层重构：拆分运行状态
+范围：app.py、requirements.txt；新增 core/__init__.py、core/runtime_state.py。
+备份：backups\app_20260715_025207980.py.bak、backups\requirements_20260715_025412618.txt.bak；日志追加前已备份。
+变更：将 STEPS、STATS、connected_clients、log_buffer、add_log 从 app.py 搬到 core/runtime_state.py；app.py 通过导入共享同一对象；scraper_status 因存在整体重新赋值暂留原处。requirements 将 uvicorn 改为 uvicorn[standard] 以补齐 WebSocket 运行依赖。
+验证：4个Python文件AST通过；共享对象身份均为True；内存日志追加/恢复通过；app.py 3193降至3122行；状态接口7步骤；步骤start/complete通过；pip check通过；WebSocket直连收到 log 与 pong；服务正常关闭。
+结果：通过。
+
+[2026-07-15] OfferForge 2.0 配置地基：显式导入与路径判断修复
+范围：app.py、config.py。
+备份：backups\app_20260715_052121114.py.bak、backups\config_20260715_052121336.py.bak；日志追加前已备份。
+变更：app.py 将 from config import * 改为只导入 BASE_DIR、DATA_DIR、RESUMES_DIR；config.py 合并重复的 PyInstaller 路径判断，消除 frozen 模式下 _sys 未定义风险。
+验证：两文件AST通过；普通源码路径、DATA/RESUMES子目录、模拟frozen路径均正确；app导入与状态路由正常；项目无 config 通配符导入；真实启动、React首页和状态API均200。
+保守清理：删除测试生成的 core/__pycache__ 与 routers/__pycache__，未触碰源码、数据或备份。
+结果：通过。
+
+[2026-07-15] OfferForge 工作区深度清理
+请求：扫描全部项目文件，删除无用副本与残留，只保留当前主体、日志和每个源文件最新一份备份。
+删除：旧 exe/封装构建目录2个、旧根级前端 src/public/index.html、旧 server.py、一次性 patch/fix/copy 脚本、调试和 ngrok/local 抓取文件、根缓存、旧源文件备份和多余版本备份。共删除5个目录、36个文件，释放257.84 MB。
+保留：当前 app/config/core/routers/modules/frontend/static、依赖、Git、.env、data/resumes/photos、全部正式日志、README/LICENSE/升级总结/演示视频；每个源文件只留最新1份备份。static 因当前 app.py 仍挂载而保留。
+验证：13个Python文件AST通过；应用导入和39个路由对象正常；pip check通过；前端lint 0警告且build通过；首页、JS、CSS、状态、简历、岗位接口均200；WebSocket PONG；Edge渲染成功且控制台0错误。服务器保持运行供用户测试。
+结果：清理成功。
+
+[2026-07-15] OfferForge 2.0 地基阶段2：岗位采集运行状态独立化
+范围：app.py、core/runtime_state.py。
+备份：backups\app_20260715_054625308.py.bak、backups\core\runtime_state_20260715_054625587.py.bak；每个源文件只保留最新1份；日志追加前已备份。
+变更：将 scraper_status 搬为 core.runtime_state.SCRAPER_STATUS；app通过显式导入共享；启动时由重新赋值改为 update原字典；所有采集进度、数量、结束时间统一写入共享对象；状态接口返回副本。
+验证：两文件AST通过；共享对象身份True；update前后id不变；app可见更新；旧变量/global引用为0；服务重启；状态接口初始running=false；空简历和不存在简历错误路径均ok=false；失败请求前后状态不变；WebSocket PONG；首页200。服务器保持运行。
+结果：通过。地基进度2/8=25%。
+
+[2026-07-15] OfferForge 2.0 地基阶段3.1：拆分只读简历路由
+范围：app.py；新增 routers/resumes.py。
+备份：backups\app_20260715_055729320.py.bak；新文件无旧版本；日志追加前已备份且每源文件仅留最新1份。
+变更：新建 prefix=/api/resumes 的 APIRouter；迁移 files、list、detail、latest 四个GET查询；app注册resumes_router并删除旧函数及无用list_resumes导入。
+验证：两文件AST通过；四条路由各1条、无重复；app旧函数为0；app.py 3122降至2974行；原始文件数与列表数一致；中文文件名UTF-8详情查询ok=true；latest ok=true；不存在文件ok=false；首页200且React root正常；WebSocket PONG。服务器保持运行。
+结果：通过。路由阶段1/4，总地基约28%。
+
+[2026-07-16] OfferForge 2.0 简历路由写入批次：上传与删除
+范围：app.py、routers/resumes.py、modules/resume_parser.py。
+备份：backups\app_20260716_191130841.py.bak、backups\routers\resumes_20260716_191131085.py.bak、backups\modules\resume_parser_20260716_191512487.py.bak；日志追加前备份；每源文件仅留最新1份。
+变更：迁移 POST /api/resumes/upload 与 DELETE /api/resumes/delete/{filename}；上传增加安全文件名、DOCX/PDF/TXT白名单、空文件和10MB限制、失败原始文件清理；删除同步清理SQLite、兼容JSON和不再被引用的原始文件；修复旧删除只删JSON不删数据库的问题；控制台成功/失败提示移除不可被GBK编码的表情。
+验证：3文件AST通过；上传/删除路由各1且无重复；app旧函数为0；app.py降至2904行；隔离上传后原始文件/JSON/DB均存在，删除后三处均消失；再次删除、不支持扩展名、危险文件名均ok=false；测试DB记录和临时文件为0；真实multipart bad.exe返回200且ok=false；不存在删除ok=false；列表数不变；首页200；WebSocket PONG。
+清理：删除4个自动生成__pycache__，未触碰用户数据。服务器保持运行。
+结果：通过。
+
+[2026-07-16] OfferForge 2.0 简历AI优化：薄路由与Service拆分
+范围：app.py；新增 routers/resume_actions.py、services/__init__.py、services/resume_optimization.py。
+备份：backups\app_20260716_202433606.py.bak；新文件无旧版本；日志追加前已备份且每源文件仅留最新1份。
+变更：迁移 POST /api/resume/optimize；路由仅接收Form并通过run_in_threadpool调用同步业务；原285行业务逻辑原样迁入Service；app注册resume_actions_router并删除旧函数。
+验证：4文件AST通过；备份旧函数与新Service业务体AST完全一致；接口1条、无重复；app旧函数为0；app.py 2904降至2619行；假AI成功、无JSON、抛异常三路径符合预期；缺参数、缺文件均ok=false；线程池参数传递正确；真实HTTP两错误路径通过；首页200；WebSocket PONG；临时脚本与测试简历均不存在。服务器保持运行。
+未处理观察：projects_str、internships_str、skills_str、edu_str只计算未进入提示词，功能优化阶段优先修复。
+结果：通过。
+
+[2026-07-16] OfferForge 2.0 岗位只读路由拆分
+范围：app.py；新增 routers/jobs.py。
+备份：backups\app_20260716_223620444.py.bak；两份日志追加前均已备份。
+变更：把 GET /api/jobs/list 与 GET /api/jobs/detail/{filename} 从 app.py 迁入 prefix=/api/jobs 的独立 APIRouter；删除原详情函数后方永远不会执行的旧 JSON 兼容残段；采集、打分、投递和前端均未改动。
+验证：两文件 py_compile 与 AST 通过、UTF-8 无 BOM；两条路由各1条且 API 无重复；与修改前备份中的旧函数连续10轮对比，列表、详情、错误路径返回完全一致；真实 HTTP 列表5批、详情28条、不存在批次 ok=false；React 首页、现役 JS/CSS 均200；WebSocket 按真实 JSON 协议收到 log 后 pong；pip check 通过。
+清理：按两批改动清理规则删除5个自动生成的 __pycache__，并删除本次临时基线JSON；未触碰源码、数据、备份或用户文件。
+结果：通过。app.py 从2619行降至2537行；服务器已重启并保持在5000端口运行；地基进度约56%。
+
+[2026-07-16] 建立固定教学汇报格式
+用户要求：以后统一采用截图中的教学汇报结构，并写入日志供后续任务直接读取。
+范围：全局控制台.txt、Codex工作日志.txt；未修改任何项目代码。
+备份：backups\全局控制台_20260716_225307393.txt.bak、backups\Codex工作日志_20260716_225307666.txt.bak。
+变更：新增永久规则8，固定使用“当前进度、本次结构变化、你学到的概念、测试结果、备份、发现但暂未修改的问题、测试你、下一步”八个栏目；要求进度条、前后结构对比、大白话类比、真实代码片段、逐项测试和每部分小测。
+验证：两份日志均可按UTF-8严格读取且无BOM；规则8及八个栏目关键词均存在；项目代码0改动。
+结果：以后每次项目优化、修复、重构、测试或阶段总结均按该格式汇报。
+
+[2026-07-16] OfferForge 2.0 岗位采集Router与Service拆分
+范围：app.py、routers/jobs.py；新增 services/job_collection.py。
+备份：backups\app_20260716_232137708.py.bak、backups\routers\jobs_20260716_232137943.py.bak；两份日志追加前均已备份。
+变更：将 POST /api/jobs/scrape、GET /api/jobs/scrape/status、采集后台任务、城市过滤和自动JD评分从app.py迁入岗位Router与job_collection Service；Router只接收Form并转交参数，Service保留原业务体和共享SCRAPER_STATUS更新方式；app.py移除采集专用导入。
+验证：3文件py_compile、AST、UTF-8无BOM通过；旧app与新Service四个函数业务体AST完全一致；采集与状态路由各1条、API重复路由0、总路由39；假的线程池和采集器覆盖启动成功、缺少/不存在简历、空结果、采集异常、采集成功及状态复位；真实HTTP状态和两条错误路径与搬迁前逐字段一致；岗位列表5批、详情28条、首页与现役JS/CSS均200；WebSocket依次收到log和pong；pip check通过；真实外部招聘网站采集未自动触发。
+结果：通过。app.py从2537行降至2150行；routers/jobs.py为102行；新增Service为386行；5000端口服务器已重启并保持运行；地基进度约63%。
+未处理观察：采集resume_file尚未做basename路径约束；迁移代码内存在旧乱码日志；属于安全/功能质量阶段，未在本次纯结构拆分中越界修复。
+
+[2026-07-17] OfferForge 2.0 JD匹配Router与Service拆分
+范围：app.py；新增 routers/matching.py、services/job_matching.py。
+备份：backups\app_20260717_002603847.py.bak；两份日志追加前均已备份。
+变更：迁移POST /api/jd/match、/api/jobs/batch-score、/api/jobs/batch-score-json、/api/jd/batch-match；Router负责Form/JSON接收并通过run_in_threadpool调用，Service保留单条匹配、两种批量评分、排序、阈值统计和兼容JSON写回业务；app注册matching_router并移除旧函数及匹配专用导入。
+验证：3文件py_compile、AST、独立import、UTF-8无BOM通过；四个Service函数正文与旧app AST完全一致；四条目标路由各1条、API重复路由0、总路由39；临时简历和岗位文件配合假评分函数验证单条匹配、Form批量、JSON批量、快速匹配、排序、阈值统计、结果写回和线程池参数传递，真实AI调用0；真实HTTP四条错误路径与搬迁前逐字段一致；岗位列表5批、详情28条、首页与现役JS/CSS均200；WebSocket依次log、pong；pip check通过。
+清理：岗位采集与本次匹配累计两批，删除5个自动生成__pycache__及临时基线；测试脚本残留0，未触碰源码、数据、备份或用户文件。
+结果：通过。app.py从2150行降至1648行；新增matching Router 51行、job_matching Service 488行；5000端口服务器已重启并保持运行；地基进度约70%。
+未处理观察：jobs_file/resume_file尚未统一做basename路径约束；Form与JSON批量评分业务高度重复；兼容JSON写回仍存在。这些留待安全、复用和SQLite统一阶段处理。
+
+[2026-07-17] OfferForge 2.0 投递管理Router与Service拆分
+范围：app.py；新增 routers/deliveries.py、services/delivery_service.py。
+备份：backups\app_20260717_173846290.py.bak；两份日志追加前均已备份。
+变更：迁移GET /api/deliver/status、history及POST greeting、list、mark、undo、update_status共7条接口；Router统一接收Form并通过run_in_threadpool调用，Service保留AI招呼语、候选过滤、URL修正、SQLite投递管理和STATS更新业务；精准简历优化区保持原位；app注册deliveries_router并移除投递旧函数及不再使用的load_profile导入。
+验证：3文件py_compile、AST、独立import、UTF-8无BOM通过；10个投递函数正文与旧app AST完全一致；7条目标路由各1条、精准优化仍1条、API重复路由0、总路由39；临时简历和岗位文件、假AI和假DeliverManager验证状态/历史、招呼语成功与异常、候选过滤、标记成功与重复、撤销、状态更新成功与失败及线程池参数传递，真实数据库写入0、真实AI调用0；真实HTTP状态/历史及3条错误路径与搬迁前逐字段一致；update_status缺参数422；精准优化错误路径200；岗位列表5批、详情28条、首页和现役JS/CSS均200；WebSocket依次log、pong；pip check通过。
+清理：删除本次临时基线，测试脚本残留0；本批为清理周期第1批，未执行缓存目录清理。
+结果：通过。app.py从1648行降至1190行；新增deliveries Router 90行、delivery Service 446行；5000端口服务器已重启并保持运行；地基进度约78%。
+未处理观察：deliver_status目前没有真实进度写入；旧_save_deliver_history已弃用但仍保留；文件名路径约束、投递状态白名单、DeliverManager历史乱码及候选JSON依赖留待安全和数据统一阶段处理。
+
+[2026-07-17] OfferForge 2.0 剩余简历Router与Service拆分
+范围：app.py、routers/resume_actions.py；新增 services/resume_documents.py、services/resume_precision.py。
+备份：backups\app_20260717_181617618.py.bak、backups\routers\resume_actions_20260717_181617617.py.bak；纠错前Service与两份日志也已按规则备份。
+变更：迁移覆盖保存、模板生成、照片上传、HTML导出、JD详情抓取和精准优化；Router保留Form、File和UploadFile声明，普通同步业务通过run_in_threadpool转交，照片Service保留异步读取；app.py仅保留应用装配、WebSocket和前端入口。
+验证：4文件py_compile、独立import、UTF-8无BOM、git diff格式检查通过；6个Service函数正文与旧app AST完全一致；5条目标路径各1条；临时简历、岗位、照片和假AI覆盖覆盖写回、模板、导出、照片、精准优化及Router参数转交，真实AI调用0、真实用户数据写入0；迁移前后5条错误路径状态码和响应正文完全一致；状态、投递状态、岗位列表5批、岗位详情28条、首页、现役JS/CSS均正常，WebSocket收到PONG；pip check通过。
+清理：本批为两批周期的第2批，安全删除项目内5个自动生成的__pycache__目录；测试脚本残留0，未触碰data、backups和用户文件。
+结果：通过。app.py从1190行降至226行；新增resume_documents Service 695行、resume_precision Service 282行；5000端口服务器已重启并保持运行；地基进度约86%。
+未处理观察：文件名路径约束尚未统一；模板和导出Service仍直接返回HTTP响应对象；精准优化仍依赖外部JD页面、GBK兼容和兼容JSON；现有自动化测试尚未沉淀为永久tests目录。
+
+[2026-07-17] OfferForge 2.0 文件名与目录边界安全整改
+请求与范围：统一用户文件名安全校验，防止../、绝对路径、Windows保留名、非法字符、错误扩展名和真实路径越界；新增 core/file_security.py，修改 routers/resumes.py 及 resume_documents、resume_optimization、resume_precision、job_collection、job_matching、delivery_service 共6个Service文件。
+备份：backups\routers\resumes_20260717_184341589.py.bak；backups\services 下6个Service的20260717_184341批次备份；两份日志追加前也已备份。
+变更：新增validate_filename与resolve_file_in_directory公共门卫；统一验证JSON简历/岗位、原始DOCX/PDF/TXT、照片目标路径；所有用户文件名先验证再读写，真实路径必须留在指定目录；上传bad.exe仍保留原“仅支持DOCX、PDF和TXT”提示。
+验证：8个Python文件py_compile、独立import、UTF-8无BOM、格式检查通过；静态扫描中用户resume_file/jobs_file/filename直接拼接data目录残留0；10类危险文件名、目录逃逸、18个Service入口和3个Router入口均在文件读取、后台采集或AI调用前拦截；12条真实HTTP危险路径被拦截，照片目录和简历目录写入0；普通missing.json旧行为保留；临时安全文件配合假AI验证文档、基础优化、精准优化、采集、匹配和投递正常成功，真实AI调用0、真实用户数据写入0；API路由30条、重复0，状态/首页/现役JS/CSS均200，岗位5批、详情28条，WebSocket PONG，pip check通过。
+清理：本批为清理周期第1批，不删除缓存；临时测试目录由系统自动回收，测试脚本残留0。
+结果：通过。后端已以最终代码重启在5000端口；新增公共安全工具71行；地基进度约91%。
+未处理观察：多数业务错误仍以HTTP 200返回，错误响应格式尚未统一；照片内容类型和体积上限尚未统一验证；JSON与SQLite兼容数据仍并存；永久tests目录仍待建立。
+
+[2026-07-17] OfferForge 2.0 普通接口参数校验统一
+请求与范围：在文件路径安全整改之后，为简历优化、覆盖、模板、精准优化、岗位采集、JD匹配、批量评分、投递候选、投递记录和状态更新增加普通参数边界；新增 core/input_validation.py，修改 resume_optimization、resume_documents、resume_precision、job_collection、job_matching、delivery_service 共6个Service文件。
+备份：backups\services 下6个Service的20260717_191036批次备份；Codex工作日志与全局复利踩坑日志追加前备份为20260717_191958275批次；新公共工具无旧版本。
+变更：新增统一错误结构 ok=false、error、error_code=INVALID_INPUT、field；公共校验文本长度、整数范围、单项/多项白名单、岗位索引和HTTP(S)网址；非法输入统一在读文件、调用AI、启动采集或写SQLite之前返回；保留合法请求和原有业务错误结构。
+验证：7个目标Python文件及全项目Python语法通过，目标模块独立导入通过；公共工具边界、18组非法Service输入、0/100合法边界、合法平台/状态/索引全部通过；真实HTTP复测7条非法输入均返回对应field，正常missing.json仍走旧业务错误；真实AI调用0、真实数据库写入0；API路由30条、重复0，状态/简历/岗位接口200，岗位5批、首批28条，首页与本地JS资源200，WebSocket PONG，pip check通过；本次新增/修改行无尾随空格，7个目标文件UTF-8无BOM。
+清理：本批为两批周期第2批，安全删除项目内5个自动生成的__pycache__目录；本轮测试文件残留0。历史data/test_no_match.json因不是本轮生成且用途未确认而保留。
+结果：通过。后端已以最终代码重启并保持在5000端口；地基进度约95%。
+未处理观察：多数业务校验错误为兼容前端仍以HTTP 200返回；README.md及logs/url_1.txt、url_2.txt有历史BOM；job_scraper.py和resume_parser.py有历史尾随空格；data/test_no_match.json疑似历史测试样本；永久tests目录、统一HTTP状态码、照片内容校验和JSON/SQLite统一仍待处理。
+
+[2026-07-17] OfferForge 2.0 地基收官：统一API错误合同与永久测试
+请求与范围：完成地基最后一步；新增 core/api_responses.py 和 tests 目录，修改 app.py 及 system、resumes、jobs、matching、deliveries、resume_actions 六个Router；不改Service业务、前端设计、AI逻辑或真实数据。
+备份：app_20260717_193301293.py.bak；routers下system/resumes/jobs/matching/deliveries/resume_actions的20260717_193301至193303批次备份；两份日志追加前备份为Codex工作日志_20260717_194128734.txt.bak、全局复利踩坑日志_20260717_194129143.txt.bak；新文件无旧版本。
+变更：UnifiedAPIRoute只转换JSON错误，成功、HTML和文件响应保持原样；统一保留ok/error并补error_code；HTTP状态规范为400参数错误、404资源不存在、409状态冲突、422框架校验/内容无法处理、500内部错误、502 AI或外部服务错误；全局异常处理隐藏客户端内部细节；六个Router共30条API全部接入；新增17项unittest永久测试，覆盖文件边界、普通参数、成功响应、400/404/409/422/500/502及未知API。
+验证：13个本轮文件py_compile和UTF-8无BOM通过；永久测试17/17通过；真实服务非法参数400、缺失资源404、缺字段422、未知API404，状态/简历/岗位接口200；API路由30条、统一路由30条、重复0；岗位5批、首批28条；首页及2个本地JS/CSS资源200；WebSocket PONG；前端oxlint 0错误、Vite build通过；pip check通过；真实AI调用0、真实数据库写入0；5000端口由最终app.py保持运行。
+浏览器验证：按浏览器技能连接真实页面时，插件运行环境初始化报“failed to write kernel assets: 系统找不到指定的路径”，已确认browser-client.mjs实际存在；遵循技能规则未改用其他浏览器自动化冒充通过。项目侧HTTP资源、前端构建和WebSocket验证均通过，但本批没有取得可视化控制台证据。
+清理：这是上次清理归零后的第1个代码批次，不执行缓存删除；tests和前端dist均为正式、被引用内容，予以保留。
+结果：地基整改工程达到100%；后续从商业功能层开始迭代。
+未处理观察：照片内容类型/体积校验、JSON与SQLite兼容数据统一、历史BOM/尾随空格和data/test_no_match.json仍属于后续独立批次；浏览器插件运行环境需由Codex插件侧修复。
+
+[2026-07-17] 技术债逐项清理1：证件照真实内容与体积校验
+请求与范围：在进入2.0功能优化前逐项处理已发现问题；本批仅修改照片上传和模板读取，范围为services/resume_documents.py、frontend/src/components/AIAssistant.jsx、requirements.txt；新增tests/test_photo_upload.py，不改其他业务和真实用户照片。
+备份：resume_documents_20260717_200410023.py.bak、AIAssistant_20260717_200410452.jsx.bak、requirements_20260717_200410884.txt.bak；两份日志追加前备份为Codex工作日志_20260717_200959568.txt.bak、全局复利踩坑日志_20260717_201000007.txt.bak；新测试文件无旧版本。
+旧行为证据：隔离环境上传text/plain文本时旧Service返回ok=true并实际写成.photo.jpg。
+变更：明确Pillow依赖；只接受Pillow可完整验证且MIME一致的JPEG/PNG；拒绝空文件、超过5MB、超过2000万像素、伪造/损坏图片和MIME不一致；照片读取后主动关闭上传对象；全部校验通过后才创建目录和写文件；按真实格式保存.jpg或.png，新格式成功后清除同简历旧格式；模板按真实MIME嵌入；前端文件选择限制为JPEG/PNG。
+验证：照片专项3项及完整永久测试21/21通过；非法文本、空文件、超大文件、MIME不符均零写入；真实JPEG/PNG成功、格式替换正确、PNG模板MIME正确；真实HTTP三类非法照片均400 INVALID_INPUT且探针残留0；Python语法、pip check、前端oxlint和Vite build通过；API路由30条无重复，状态/简历/岗位200，岗位5批首批28条，首页和本地JS/CSS 200，WebSocket PONG；真实AI调用0、真实数据库写入0。
+清理：地基收官与本批累计两批，安全删除6个__pycache__目录，剩余0；data、photos、tests、前端构建和备份均保留。
+结果：第1项技术债完成；5000端口最终服务保持运行。下一项为历史BOM与尾随空格。
+未处理观察：JSON与SQLite统一、历史test_no_match样本和浏览器插件环境仍按后续独立批次处理。
+
+[2026-07-17] 技术债逐项清理2：历史BOM与Python尾随空格
+请求与范围：继续逐项处理已发现问题；本批只修改README.md、logs/url_1.txt、logs/url_2.txt、modules/job_scraper.py、modules/resume_parser.py，不改业务逻辑、URL正文或数据。
+备份：README_20260717_201919798.md.bak；logs/url_1_20260717_201920190.txt.bak、url_2_20260717_201920571.txt.bak；modules/job_scraper_20260717_201920947.py.bak、resume_parser_20260717_201921360.py.bak；两份日志追加前备份为Codex工作日志_20260717_202346326.txt.bak、全局复利踩坑日志_20260717_202346701.txt.bak。
+变更：三份文本仅移除UTF-8 BOM；job_scraper.py删除27处、resume_parser.py删除24处行尾空格或Tab；换行结构、缩进和其他字符保持不变。
+验证：三份BOM文件解码正文与备份逐字符一致，SHA256分别保持c2cdb95、a63749e、b3756ca开头；两个Python文件行数不变，仅51个已知行尾空白发生变化，标准化字符串空白后的AST一致，py_compile通过；两条受影响三引号SQLite INSERT在临时数据库真实执行成功，临时JSON写入成功，真实数据库写入0；全工作区目标文本BOM扫描0、两模块尾随空格0、git diff格式检查无错误；永久测试21/21、pip check通过；API路由30条无重复，状态/简历/岗位200，岗位5批首批28条，首页和本地JS/CSS 200，WebSocket PONG。
+清理：这是上次归零后的第1批，不删除缓存；未产生临时脚本或真实数据残留。
+结果：第2项技术债完成；5000端口最终服务保持运行。下一项核验并处理data/test_no_match.json。
+未处理观察：JSON与SQLite统一、历史test_no_match样本和浏览器插件环境仍待独立处理。
+
+[2026-07-17] 技术债逐项清理3：删除孤立测试岗位样本
+请求与范围：继续逐项处理已发现问题；本批只核验并删除data/test_no_match.json，不修改业务代码、SQLite数据库或其他用户数据。
+删除前取证：文件77字节，内容仅含Test、TestCo和https://test.com假岗位；SHA-256为4EB1A796D824827AA3E3C2D95AAD73638E03A0C1C2087A3530180588EBADD7B5；Git未跟踪，活动源码精确引用0。
+依赖核验：岗位列表Router只查询SQLite；真实/api/jobs/list返回5个SQLite批次且不含该文件或假URL；只读查询offerforge.db确认对应Test、TestCo或URL记录0；投递自动回退只匹配jobs_*.json，该文件名不符合现役批次规则。
+备份：按永久规则不备份data测试数据；删除前已记录绝对路径、大小、时间、内容结构和完整SHA-256。Codex工作日志追加前备份为Codex工作日志_20260717_204310862.txt.bak。
+变更：解析并验证目标必须精确等于D:\AI_ONE\data\test_no_match.json且位于工作区data目录后，仅删除这一份孤立测试文件；其他data内容未改。
+验证：删除后文件不存在，活动代码引用0；永久测试21/21、全项目Python编译、pip check、前端oxlint和Vite build通过；API路由30条且重复0，状态/简历/岗位接口200，岗位仍为5批且首批28条，首页及2个本地资源200，WebSocket PONG；5000端口仍由最终app.py进程保持运行。
+清理：与上一批累计达到两批，安全删除项目内6个自动生成的__pycache__目录，剩余0；未触碰backups、node_modules、.git或其他数据文件。
+结果：第3项技术债完成，孤立测试样本已按证据安全删除。下一项进入JSON与SQLite兼容数据统一，这是进入2.0功能优化前最后一个项目内大型技术债。
+未处理观察：JSON与SQLite双存储及写回边界仍需单独审计和分阶段迁移；浏览器插件内核运行环境故障属于Codex插件侧问题，不与项目代码混改。
+
+[2026-07-17] JSON与SQLite统一第1批：数据库结构自初始化与岗位批次抽屉
+请求与范围：开始最后一个大型技术债，先审计全部JSON/SQLite读写链，再建立可无损升级的数据库地基；本批修改app.py、modules/db_client.py，新增tests/test_database_schema.py，不搬迁、不删除5份岗位JSON，不改匹配、投递或简历业务。
+审计结论：SQLite已有75条岗位，分别覆盖5份jobs_*.json的4、4、7、32、28条基础岗位；5份JSON还独占match_score、优势、短板、建议、resume_name等AI评分信息，不能直接删除；resumes表和简历JSON均为0，deliveries表及deliver_history.json均为空。
+备份：backups/app_20260717_205538825.py.bak、backups/modules/db_client_20260717_205538801.py.bak；数据库按永久规则不复制备份，升级前记录大小57344字节及SHA-256 D50EC869E4A609B2B3314C73F7A05876C66D8729DC35014273DCB99AFCA2EFF3；日志追加前备份为Codex工作日志_20260717_210025022.txt.bak、全局复利踩坑日志_20260717_210025047.txt.bak。
+变更：get_connection支持传入隔离测试数据库；init_db可重复执行并为旧jobs表补batch_id、keywords及索引，为旧deliveries表补notes；新增job_batches表保存完整批次快照和AI评分；app生命周期启动时先执行init_db；控制台初始化提示改为只在直接运行模块时输出，避免服务启动噪声和表情编码问题；新增2项永久数据库测试。
+真实数据升级：只创建/补充结构，岗位仍75条、简历0、投递0，job_batches新表0条；数据库升级后SHA-256为4F73295019A2ACD1FAD26AF1875AAF38BF4F2957E5239DD99670185661A6688D。5份历史JSON数量、大小和2026-06-10修改时间均未变化。
+验证：临时空库重复初始化通过；模拟旧库保留1条岗位并无损补字段通过；完整永久测试由21增至23且23/23通过；3个目标文件py_compile、UTF-8无BOM、git diff格式检查、pip check、前端oxlint和Vite build通过；API路由30条且重复0，状态/简历/岗位接口200，岗位仍5批75条、详情正常、缺失批次404，首页和2个本地资源200，WebSocket PONG；5000端口由最终app.py进程保持运行。
+清理：这是上次清理归零后的第1个代码批次，不执行缓存删除；未产生临时脚本，未触碰用户简历、5份岗位JSON、备份或依赖目录。
+结果：统一工程第1批完成。数据库现在能在全新环境自动建出4张正式表，也能给旧库无损升级；job_batches抽屉已就位但尚未装入历史JSON。
+未处理观察：当前岗位采集仍先写jobs基础表再写JSON，尚未写job_batches且新岗位的batch_id/keywords写入链需下一批统一；匹配和投递仍直接读写JSON；浏览器插件环境故障继续与项目代码隔离。
+补充自检纠正：新增batch_id索引后，5个历史批次因created_at相同而暴露原SQL排序不稳定，首项一度从28条批次变为4条批次；已备份routers/jobs.py为jobs_20260717_210241873.py.bak，并将排序精确改为collected_at DESC、batch_id DESC。新增1项同时间批次排序永久测试，完整测试最终为24/24；真实列表顺序恢复为084637、055739、054745、053620、235811，首批详情恢复28条，数据数量始终未变化。
+
+[2026-07-17] JSON与SQLite统一第2批：统一岗位仓库与5批历史快照导入
+请求与范围：建立统一岗位批次Repository，把5份历史jobs_*.json可逆复制到job_batches并逐批验证；新增modules/job_repository.py、tests/test_job_repository.py，不修改或删除旧JSON，不切换匹配、投递和采集业务。
+迁移前基线：offerforge.db为61440字节、SHA-256 4F73295019A2ACD1FAD26AF1875AAF38BF4F2957E5239DD99670185661A6688D，jobs=75、job_batches=0、resumes=0、deliveries=0；5份JSON原始字节SHA-256已逐份记录。
+备份：两个代码文件均为本批新建，无旧版本可备份；按永久规则不复制data数据库和JSON，改用迁移前哈希、行数和文件元数据取证；日志追加前备份为Codex工作日志_20260717_222710305.txt.bak。
+变更：新增安全批次名校验、规范JSON哈希、完整批次保存/读取、内容相同时零写入、内容变化时UPSERT更新及旧JSON整批导入；导入会先读取并校验全部文件，再在单一SQLite事务中写入，任一JSON损坏时job_batches写入0；新增3项永久测试覆盖完整AI字段读回、更新、重复导入、损坏JSON原子回滚和危险文件名。
+真实迁移：5份历史JSON首次全部created=True，分别导入4、4、7、32、28条，共5批75条；从SQLite读回后与源JSON逐个字典完全相等，5个规范内容哈希一致；第二次导入5批全部created=False、changed=False，数据库字节哈希保持不变。迁移后jobs仍75、job_batches=5、resumes=0、deliveries=0，数据库SHA-256为778DBB013CBF47C923C77F2B218F2E7B02E8CDE5AFE13286C93C4E9F6BDD26B0。
+验证：Repository专项3项、数据库专项3项及完整永久测试27/27通过；新模块和测试py_compile、独立导入、UTF-8无BOM、git diff格式检查、pip check通过；前端oxlint和Vite build通过；状态/简历/岗位列表200，批次顺序稳定为084637、055739、054745、053620、235811，首批详情28条，缺失批次404；首页、favicon和现役JS均200，WebSocket PONG；5份旧JSON原始字节SHA-256全部保持不变，服务器PID 16764继续正常运行。
+清理：数据库统一第1批与本批累计两次代码改动，安全删除工作区内6个__pycache__目录，剩余0；未触碰data源JSON、backups、node_modules、.git、用户简历或依赖。
+结果：统一工程第2批完成。5份历史岗位的完整AI评分快照现在同时安全存在于SQLite，旧JSON仍作为兼容副本保留；迁移可重复运行且不会重复写。
+未处理观察：现役岗位采集、匹配、投递和精准优化仍直接读写JSON，下一批先让岗位采集通过Repository同步写入jobs基础表与job_batches快照；在所有消费者切换并验证前不删除旧JSON。浏览器插件环境故障继续与项目代码隔离。
+
+[2026-07-17] JSON与SQLite统一第3批：新采集三方同步与自动评分回写
+请求与范围：让今后的岗位采集统一经过Repository，同时保存jobs基础索引、job_batches完整快照和兼容JSON；让采集后的自动评分同步回写SQLite批次。未调用真实招聘网站或真实AI。
+备份：modules/job_repository.py备份为backups/modules/job_repository_20260717_231614611.py.bak；modules/job_scraper.py备份为backups/modules/job_scraper_20260717_231614636.py.bak；services/job_collection.py备份为backups/services/job_collection_20260717_231614641.py.bak；测试文件为本批新建。日志追加前备份为backups/Codex工作日志_20260717_233255976.txt.bak和backups/全局复利踩坑日志_20260717_233255959.txt.bak。
+变更：job_repository新增save_collected_job_batch，在一个SQLite事务中UPSERT岗位基础索引并保存完整批次，任一岗位缺少job_id则整批拒绝；JobScraper先完成SQLite事务，再写兼容JSON；自动评分先保存含评分结果的job_batches快照，再更新兼容JSON；data_dir和db_path可注入，便于测试使用临时环境。
+永久测试：新增tests/test_job_collection_storage.py共3项，覆盖正常采集后三方一致、缺少job_id时数据库零写入且不生成JSON、假AI评分后SQLite快照与JSON完全一致；没有真实AI额度消耗。
+验证：专项测试9/9、完整后端测试30/30、py_compile、pip check、git diff --check通过；前端oxlint和Vite build通过；四个目标文件均为UTF-8无BOM。真实数据库和5份岗位JSON在测试、重启及只读冒烟前后SHA-256完全不变。
+运行验收：服务器安全重启至PID 27944；主页、状态、简历列表、岗位列表、首批28条详情和现役JS/CSS均200，缺失批次404；5批顺序稳定为084637、055739、054745、053620、235811；WebSocket先收到连接日志再收到pong；30条API路由且重复0。
+清理：本批是上次缓存清理后的第1批代码改动，按两批一次规则保留本轮自动缓存，未触碰data源JSON、数据库、用户简历、backups、node_modules或.git。
+结果：统一工程第3批完成。新岗位从采集到自动评分已有一个Repository负责SQLite主记录和完整快照，旧JSON仅作为过渡兼容副本。
+未处理观察：岗位列表和详情Router目前仍直接查询SQL/兼容逻辑，匹配、投递和精准优化仍有JSON消费者；jobs基础表遇到跨批次相同job_id只保留最新索引，因此历史批次详情必须继续以job_batches完整快照为准。下一批切换岗位列表/详情到Repository，再逐个迁移匹配消费者。
+
+[2026-07-17] JSON与SQLite统一第4批：岗位列表与详情统一从Repository读取
+请求与范围：让GET /api/jobs/list和GET /api/jobs/detail/{filename}不再自行查询jobs基础索引，统一通过Repository读取job_batches批次元数据和完整快照；不改采集、匹配、投递、前端或真实数据。
+备份：backups/modules/job_repository_20260717_234222409.py.bak、backups/routers/jobs_20260717_234222409.py.bak、backups/tests/test_database_schema_20260717_234222415.py.bak、backups/tests/test_job_repository_20260717_234450511.py.bak；新增路由测试无旧版本；日志追加前备份为Codex工作日志_20260717_234756102.txt.bak和全局复利踩坑日志_20260717_234756102.txt.bak。
+变更：Repository新增稳定排序的list_job_batches；Router列表只负责把批次元数据包装成现有接口格式；详情通过load_job_batch返回完整快照，保留match_score、strengths等AI字段；写入仍严格要求jobs_*.json，读取则把普通不存在名称判为404、危险路径判为400。
+永久测试：新增tests/test_job_routes_repository.py三项，覆盖列表只走Repository、详情完整AI字段和缺失批次；Repository新增普通缺失名称与危险路径区分测试；同时间批次稳定排序测试改为直接验证job_batches读取。
+验证与自纠错：首轮专项9/9通过；首次完整回归发现普通缺失名称由旧404变成400，按API合同修正并补测试；纠正后针对性8/8、完整后端34/34通过。py_compile、pip check、git diff --check、前端oxlint和Vite build通过；真实数据库与5份JSON哈希未变。
+运行验收：服务重启至PID 21292；主页、状态、简历列表、岗位列表、首批详情、JS/CSS均200；5批顺序稳定，首批28条且28条均返回match_score字段；普通缺失批次404；WebSocket PONG；30条API路由、重复0。
+清理：第3批与本批累计两次代码改动，核验路径后删除6个自动生成的__pycache__目录，剩余0；未触碰data、backups、node_modules、.git或用户文件。
+结果：统一工程第4批完成。岗位批次的写入、列表和详情现在全部由同一个Repository管理，jobs仅作为最新岗位索引，job_batches作为历史完整档案。
+未处理观察：JD匹配、批量评分、投递候选和精准优化仍有JSON读取/写回；下一批先迁移匹配Service到Repository，并继续保留兼容JSON直到所有消费者完成。
+
+[2026-07-18] JSON与SQLite统一第5批：批量JD匹配统一从Repository读写
+请求与范围：只迁移services/job_matching.py中的表单批量评分和JSON批量评分；单条JD文本匹配、投递、精准优化和前端不改，真实AI不调用。
+备份：backups/services/job_matching_20260717_235739168.py.bak；新增tests/test_job_matching_storage.py无旧版本；日志追加前备份为Codex工作日志_20260718_000057612.txt.bak和全局复利踩坑日志_20260718_000057587.txt.bak。
+变更：新增匹配Service内部的Repository加载/保存适配；两个批量评分入口从job_batches读取完整岗位，评分后先save_job_batch更新SQLite快照，再写兼容JSON；增加data_dir和db_path可选注入，Router现有调用与接口参数不变；数据库不存在批次时不再从旧JSON偷偷回退或创建新文件。
+永久测试：新增3项，覆盖表单入口、JSON入口在假AI评分后SQLite与兼容JSON完全一致，以及数据库缺失批次时零JSON写入；全部使用临时数据库和临时目录。
+验证：专项10/10、完整后端37/37、py_compile、pip check、git diff --check通过；前端oxlint和Vite build通过；真实数据库与5份岗位JSON哈希保持不变，真实AI调用0。
+运行验收：服务重启至PID 15256；主页、状态、5批岗位、首批28条和2个现役JS/CSS均200；表单缺失批次404、JSON缺失批次404、非法阈值400；WebSocket PONG；API路由30条、重复0。
+清理：本批为上次清理后的第1批代码改动，保留测试和启动产生的6个__pycache__目录，未触碰data、backups、node_modules、.git或用户文件。
+结果：统一工程第5批完成。岗位采集、自动评分、批量JD评分、列表和详情均已以SQLite Repository为主，JSON只做过渡兼容写入。
+未处理观察：投递候选和精准优化仍有岗位JSON消费者；下一批迁移投递读取边界，再评估精准优化和停止兼容JSON的条件。
+
+[2026-07-18] JSON与SQLite统一第6批：投递候选统一从Repository读取
+请求与范围：只迁移services/delivery_service.py的投递候选列表读取；不改AI招呼语、真实投递、投递历史写入、精准优化或前端。
+备份：backups/services/delivery_service_20260718_005139470.py.bak；新增tests/test_delivery_repository.py无旧版本；日志追加前备份为Codex工作日志_20260718_005528553.txt.bak。
+变更：list_deliver_candidates增加data_dir和db_path测试注入；指定岗位批次时从load_job_batch读取，指定批次不存在或未指定时通过list_job_batches回退到最新SQLite批次；候选阈值、评分简历身份核验、历史投递过滤、URL修正和返回字段保持不变；移除该函数对glob和jobs_*.json文件存在性的依赖。
+永久测试：新增3项，覆盖无JSON文件时按指定SQLite批次筛选、缺失选择回退最新SQLite批次、空Repository正确报错；全部使用临时数据库、假简历和空投递历史，真实投递0。
+验证：专项10/10、完整后端40/40、py_compile、pip check、git diff --check通过；前端oxlint和Vite build通过；真实数据库与5份岗位JSON哈希保持不变。
+运行验收：服务重启至PID 20372；主页、状态、投递状态、投递历史、岗位5批、首批28条和现役JS/CSS均200；投递候选非法阈值400、危险岗位文件名400；WebSocket PONG；API路由30条、重复0；没有触发真实投递或AI。
+清理：第5批与本批累计两次代码改动，核验绝对路径后删除6个自动生成的__pycache__目录，剩余0；未触碰data、backups、node_modules、.git或用户文件。
+结果：统一工程第6批完成。投递候选现在直接使用SQLite中的完整评分岗位，指定批次和自动最新批次两条路径都不再依赖岗位JSON。
+未处理观察：AI招呼语仍会从岗位JSON读取最多8条作为提示词参考；精准优化仍有岗位JSON消费者；下一批分别审计这两个边界，并决定是否可以停止兼容JSON写入。
+
+[2026-07-18] JSON与SQLite统一第7批：AI招呼语岗位参考统一从Repository读取
+请求与范围：只迁移generate_greeting中的可选岗位参考读取；不改简历读取、提示词规则、DeepSeek调用、投递候选、精准优化或前端。
+备份：backups/services/delivery_service_20260718_010057177.py.bak；新增tests/test_greeting_repository.py无旧版本；日志追加前备份为Codex工作日志_20260718_010702403.txt.bak。
+变更：generate_greeting增加data_dir和db_path测试注入；用户指定安全岗位批次时通过load_job_batch读取SQLite完整快照并继续只取前8条；批次不存在时保持旧行为，继续生成但不附加岗位参考；危险名称仍在创建AI客户端前拒绝。
+永久测试：新增3项，覆盖无岗位JSON时从Repository读取前8条且排除第9条、缺失批次保持可选上下文为空、危险路径在AI调用前拒绝；使用临时简历、临时数据库和假DeepSeek客户端，真实AI调用0。
+验证：专项10/10、完整后端43/43、py_compile、pip check、git diff --check通过；前端oxlint和Vite build通过；真实数据库与5份岗位JSON哈希保持不变。
+运行验收：服务重启至PID 17000；主页、状态、岗位5批、首批28条和现役JS/CSS均200；招呼语缺少简历400且未触发AI；WebSocket PONG；API路由30条、重复0。
+清理：本批为上次缓存清理后的第1批代码改动，保留运行生成的6个__pycache__目录；未触碰data、backups、node_modules、.git或用户文件。
+结果：统一工程第7批完成。AI招呼语与投递候选都已从SQLite读取岗位，投递板块不再需要岗位JSON作为数据来源。
+未处理观察：精准简历优化是最后一个已知岗位JSON消费者；完成其迁移后，还需全局审计兼容JSON的所有读写点，再决定停止新JSON写入和历史JSON保留策略。
+
+[2026-07-18] JSON与SQLite统一第8批：精准简历优化统一从Repository读取
+请求与范围：只迁移services/resume_precision.py中的岗位批次读取；不改简历JSON读取、岗位索引选择、JD网页抓取、AI提示词、结果返回或前端。
+备份：backups/services/resume_precision_20260718_012013482.py.bak；新增tests/test_resume_precision_repository.py无旧版本；日志追加前备份为Codex工作日志_20260718_012634263.txt.bak。
+变更：precision_optimize增加data_dir和db_path测试注入；安全校验岗位批次名后通过load_job_batch读取SQLite完整快照，不再检查或打开岗位JSON；数据库缺失批次保持原错误；选中岗位、JD抓取和AI优化流程不变。
+永久测试：新增3项，覆盖无岗位JSON时从Repository读取两个选中岗位并进入假AI提示词、缺失批次在网络和AI前停止、危险路径在网络和AI前拒绝；使用临时简历、临时数据库、假JD抓取和假DeepSeek，真实AI及外网请求0。
+验证：专项10/10、完整后端46/46、py_compile、pip check、git diff --check通过；前端oxlint和Vite build通过；真实数据库与5份岗位JSON哈希保持不变。
+运行验收：服务重启至PID 27180；主页、状态、岗位5批、首批28条和现役JS/CSS均200；精准优化缺少简历400、重复岗位索引400，均未触发AI；WebSocket PONG；API路由30条、重复0。
+只读审计：现役岗位业务读取均已切到Repository；仍有3处兼容链需要下一批处理——job_collection自动评分从刚生成JSON再读一次，job_scraper采集完成写兼容JSON，job_matching批量评分写兼容JSON；job_repository的jobs_*.json读取仅用于历史迁移工具，不是正常运行消费者。
+清理：第7批与本批累计两次代码改动，核验绝对路径后删除6个自动生成的__pycache__目录，剩余0；未触碰data、backups、node_modules、.git或用户文件。
+结果：统一工程第8批完成。精准优化已不再依赖岗位JSON，所有面向用户的岗位读取路径现已以SQLite Repository为主。
+未处理观察：下一批需要把采集后的自动评分改为直接接收Repository负载，并决定是否停止两个兼容JSON写入点；历史5份JSON在完成可逆性和启动回归前仍不删除。
+
+[2026-07-18] JSON与SQLite统一第9批：自动评分直接接收内存岗位数据
+请求与范围：移除采集完成后自动评分对新岗位JSON的重复读取；保留本批兼容JSON写入、评分算法、Repository保存、旧调用兼容和历史数据，不触发真实采集或AI。
+备份：backups/modules/job_scraper_20260718_013305722.py.bak；backups/services/job_collection_20260718_013306043.py.bak；backups/tests/test_job_collection_storage_20260718_013306373.py.bak；踩坑日志和本工作日志均按修改前备份并保留每文件最近5份。
+变更：JobScraper.save_jobs新增include_payload可选参数，默认仍只返回路径，正式采集打开后同时取得刚构造的内存批次；_auto_batch_score新增jobs_data参数并删除open/json.load重复读取；采集调用链直接把该内存批次交给自动评分，评分后仍同步保存SQLite和兼容JSON。
+永久测试：调整岗位采集存储专项测试，先把已保存的兼容JSON故意写成非法文本，再把内存批次交给自动评分；评分成功且SQLite与重写后的JSON一致，证明评分不再依赖读取JSON。
+验证：岗位存储专项3/3、完整后端46/46、3文件py_compile和UTF-8无BOM、pip check、git diff --check通过；前端oxlint和Vite build通过；真实AI调用0、真实采集0、真实数据库与5份岗位JSON哈希保持不变。
+运行验收：服务安全重启至PID 9816；主页、状态、简历列表、岗位5批、首批28条详情和2个本地JS/CSS均200；WebSocket PONG；API路由30条、重复0。
+验收脚本自纠错：先后发现requests未安装、urllib继承系统代理、外部CDN与本地资源未分类、PowerShell的home与HOME变量冲突；均已写入全局复利踩坑日志，最终改用直连PowerShell和独立WebSocket脚本完成验收，失败尝试未修改真实数据。
+清理：本批是上次清理后的第1批代码改动，保留测试和运行生成的7个__pycache__目录；未触碰data历史文件、backups、node_modules、.git或用户文件。
+结果：统一工程第9批完成。自动评分的数据流已变为“采集器内存批次 -> 评分 -> Repository与兼容JSON同步保存”，不再出现“先写JSON再读JSON”的绕路。
+未处理观察：只剩1个编码步骤——停止job_scraper和job_matching新增兼容岗位JSON，并保留可逆开关或迁移边界；随后做1次最终验收，确认启动、采集隔离、评分、读取和历史5份JSON处置策略。
+
+[2026-07-18] JSON与SQLite统一第10批：停止新增兼容岗位JSON
+请求与范围：默认停止采集、自动评分和两种批量评分继续创建或改写岗位JSON；保留历史5份JSON、Repository迁移工具和可逆开关，不触发真实采集、真实AI或历史数据删除。
+备份：backups/config_20260718_015221996.py.bak；backups/modules/job_scraper_20260718_015222251.py.bak；backups/services/job_collection_20260718_015222524.py.bak；backups/services/job_matching_20260718_015222774.py.bak；backups/tests/test_job_collection_storage_20260718_015223036.py.bak；backups/tests/test_job_matching_storage_20260718_015223289.py.bak；日志追加前备份为backups/Codex工作日志_20260718_015936368.txt.bak。
+变更：config新增OFFERFORGE_WRITE_LEGACY_JOB_JSON环境开关且默认False；JobScraper.save_jobs、_auto_batch_score和job_matching._save_jobs_data仅在开关打开时写兼容JSON；自动评分旧JSON轮换删除也受同一开关保护；SQLite Repository保存和接口参数保持不变。
+永久测试：岗位采集与匹配专项由6项增至8项，覆盖默认不创建JSON、默认不改动已存在的非法历史JSON、Repository评分正常、两个批量入口默认无JSON、缺失批次零文件，以及显式开关恢复采集/自动评分/批量评分的JSON同步能力。
+验证：专项8/8、完整后端48/48、6文件py_compile和UTF-8无BOM、环境开关True/默认False、pip check、git diff --check通过；前端oxlint和Vite build通过；真实AI调用0、真实采集0、真实数据库与5份历史岗位JSON哈希保持不变。
+运行验收：服务安全重启至PID 26584；主页、状态、简历列表、岗位5批、首批28条详情和2个本地JS/CSS均200；表单与JSON批量评分缺失批次均404且未创建jobs_missing.json；WebSocket PONG；API路由30条、重复0。
+结构规模：config.py 35到42行；modules/job_scraper.py 611到618行；services/job_collection.py 412到417行；services/job_matching.py 569到585行；两份专项测试分别173到224行、88到102行。
+清理：第9批与本批累计两次代码改动，核验绝对路径后删除7个自动生成的__pycache__目录，剩余0；未触碰data、历史JSON、backups文件、node_modules、.git或用户文件。
+结果：统一工程第10批编码完成。现役岗位业务以SQLite Repository为唯一默认读写来源，旧岗位JSON仅作为未删除的历史备份和显式回退兼容路径。
+未处理观察：只剩最终验收，不再新增功能代码；需要系统验证启动、默认无JSON写入、开关回退、采集/评分隔离、所有读取路径、历史5份JSON哈希和保留策略，然后正式结束地基工程并进入OfferForge 2.0功能建设。
+
+[2026-07-18] JSON与SQLite统一工程最终验收：地基正式封顶
+请求与范围：执行最后一次只读总验收，不新增业务功能、不修改项目代码、不调用真实AI、招聘网站或投递；验证SQLite唯一默认来源、JSON零写入、回退能力、历史恢复、全站运行和最终保留策略。
+规则与备份：完整读取mr-safe-coding-workflow、全局控制台、全局复利踩坑日志和本工作日志；日志追加前备份为backups/全局复利踩坑日志_20260718_022605065.txt.bak与backups/Codex工作日志_20260718_022605438.txt.bak。
+静态审计：现役岗位列表、详情、批量评分、投递候选、招呼语参考和精准优化均通过job_repository读取；采集、自动评分和两种批量评分默认只写SQLite；仅显式OFFERFORGE_WRITE_LEGACY_JOB_JSON开关可恢复旧JSON写入；历史JSON直接读取只存在于import_legacy_job_batches迁移工具。
+专项验收：岗位数据链24/24通过，覆盖默认不创建/改写JSON、回退开关、采集保存、自动评分、两种批量评分、列表详情、投递候选、招呼语、精准优化和Repository边界；真实AI、网络采集和投递均为0。
+历史恢复：真实SQLite为jobs=75、job_batches=5、resumes=0、deliveries=0；5份历史JSON逐份与SQLite完整快照字典相等；把5份JSON导入临时空数据库成功恢复5批75条，第二次导入created=0且每批仍与真实Repository相等，临时目录自动销毁。
+全量验证：后端48/48、pip check、git diff --check、前端oxlint和Vite build全部通过；服务安全重启至PID 29724；主页、状态、简历、岗位、投递状态/历史、5批全部详情和2个本地JS/CSS均200；总岗位75；缺失详情/两种缺失批量评分均404，非法阈值400且零文件；30条API全部统一合同、重复0；WebSocket消息顺序log、pong。
+数据取证：重启、专项测试、临时恢复、完整回归和真实HTTP前后，offerforge.db与5份历史JSON的SHA-256逐个保持原值；data中岗位JSON仍精确为5份，最终验收临时文件0。
+浏览器证据：浏览器技能连接和规定的bootstrap排障均被插件侧“failed to write kernel assets”阻塞，已在复利踩坑日志记录；因此未声称浏览器控制台0错误。项目HTTP资源、构建和WebSocket证据独立通过。
+保留策略：5份历史jobs_*.json继续原位保留，正式定义为只读灾难恢复快照；理由是总量小、已证明能从零恢复5批75条，且迁移工具默认从data目录读取。正常业务不依赖、不新增、不改写；当前不移动、不删除，避免削弱紧急恢复能力。
+清理：最终测试生成的6个__pycache__目录经绝对路径核验后删除，剩余0；未触碰data、历史JSON、数据库、backups、node_modules、.git、用户文件或依赖。
+结果：JSON与SQLite统一工程最终验收通过，地基整改正式100%封顶。后续不再继续本地数据地基改造，进入OfferForge 2.0商业功能层建设。
+未处理观察：项目范围内没有阻止进入2.0的新地基问题；浏览器插件内核故障属于Codex运行环境外部问题，待插件侧修复后可补一次纯可视化控制台验收。
+
+[2026-07-19] 恢复误删的 read_txt 函数定义
+请求与范围：用户误删 modules/resume_parser.py 第49行，要求恢复；只修改该函数定义，不调整其他代码。
+备份：backups/modules/resume_parser_20260719_035518387.py.bak；日志追加前备份为 backups/Codex工作日志_20260719_035550813.txt.bak。
+修改：将第49行恢复为 def read_txt(file_path: str) -> str:。
+验证：modules/resume_parser.py AST 语法检查通过，函数定义已恢复；未运行真实AI或上传流程。
+结果：恢复完成。
+
+[2026-07-19] 桌面45天学习计划重排
+- 请求与范围：参考桌面 OfferForge_45天学习与2.0求职冲刺计划.docx，保留原D1-D45主体、2.0路线和AI产品专员六大技能，重做每日三线并行执行表；D1标记已完成。
+- 文件：新建 C:\Users\MR\Desktop\OfferForge_45天三线并行执行计划_整理版.docx；原文档未修改。日志备份：D:\AI_ONE\backups\Codex工作日志_20260719_061611611.txt.bak。
+- 实现：横向6页版式；补充每日3-4小时分配、六大技能矩阵、分周执行表、状态勾选、周复盘和最终验收；每日基础知识、2.0任务、产出与自测均直接取自原计划D1-D45。
+- 检查：生成脚本 py_compile 通过；Word只读导出PDF成功，页数6；Poppler生成6张逐页PNG并全部人工检查。首轮发现D10/D35/D45跨页拆行，加入行不可拆分后重导并复检通过。
+- 结果：无文字截断、重叠、缺字或破表；D1绿色已完成，D2-D45待执行；原稿保持不变。
+- 未解决：技能自带render_docx.py因本机缺LibreOffice无法启动，已用本机Word只读导出完成等价视觉验收。
+
+[2026-07-20] D2：多格式简历读取、原文保留与测试
+请求与范围：在完成D1/D2学习和测试后，按45天三线计划仅优化 modules/resume_parser.py；新增 tests/test_resume_parser_reading.py。未修改上传路由、AI提示词、数据库结构、前端、真实简历或岗位数据。
+备份：backups/modules/resume_parser_20260720_071119179.py.bak；日志追加前备份为 backups/Codex工作日志_20260720_071223834.txt.bak。
+变更：Word读取在保留普通段落的基础上补充表格单元格文字，并去除同一行合并单元格重复；TXT读取增加异常标记返回，与DOCX/PDF错误路径一致；parse_resume 在成功读取后保留 raw_text，并随AI结构化结果保存。
+测试：新增6项隔离测试，覆盖TXT完整读取、DOCX段落和表格、PDF多页拼接、raw_text传入AI并返回、空PDF在AI前拦截、TXT不存在路径错误标记。专项6/6、完整后端54/54、py_compile、pip check、git diff --check、UTF-8无BOM均通过；独立5011端口实际上传 bad.exe 返回400 BAD_REQUEST，未调用AI、未写入用户数据。
+结果：D2的“多格式统一读取、原文保留、关键失败路径可测”最小闭环完成。后续继续按计划进入D3段落、标题和模块识别。
+
+[2026-07-21] D3：简历常见标题别名与模块化识别
+请求与范围：优化简历解析模块对不同栏目标题的识别；重点解决“工作经历”和“实习经历”名称不同但应进入同一工作经历字段的问题。仅修改 modules/resume_parser.py，并新增 tests/test_resume_section_aliases.py；未调用真实AI，未修改数据库、前端或用户简历。
+依据：参考中国大学生在线、国内高校就业指导材料中反复出现的个人信息、教育背景、工作/实习经历、项目经历、技能证书和自我评价等常见模块，采用保守别名集合。
+备份：backups/modules/resume_parser_20260721_071953624.py.bak；日志追加前备份为 backups/Codex工作日志_20260721_072112359.txt.bak。
+变更：新增 RESUME_SECTION_ALIASES 字典，把常见标题映射到现有标准字段；新增 normalize_resume_section_headings，只标记单独占一行的标题并保留原标题，普通正文不做全局替换；工作、实习、实践和社会实践统一进入 work_experience；标题字典同步写入AI提示词，形成程序预标记与提示词约束两层识别；raw_text仍保存原文。
+测试：新增4项专项测试，覆盖六类常见标题、工作与实习别名合并、普通句子不误替换、AI收到别名字典和规范化文本。标题专项4/4、原简历读取6/6、完整后端58/58、py_compile、git diff --check、两个变更文件UTF-8无BOM均通过；真实AI调用0。
+清理：D2与D3累计两批代码改动后，核验绝对路径均位于 D:\AI_ONE，再删除6个测试生成的 __pycache__ 目录，剩余0；未触碰用户数据、日志、备份、依赖或业务文件。
+结果：D3标题模块化识别完成。不同简历使用“工作经历、工作经验、实习经历、实习经验、社会实践”等标题时，会被统一提示为 work_experience，不再只依赖单一标题写法。
+未处理观察：校园经历、荣誉奖项和证书若要成为独立展示模块，需要同时扩展返回Schema、数据库和前端，不能在本次最小修改中简单塞进现有字段；后续应作为独立产品需求处理。
+
+[2026-07-21] D3扩展：常见简历独立模块与空值隐藏
+请求与范围：把获奖荣誉和证书设置为独立列表，并调研补充其他高频简历模块；有内容才在简历详情展示，无内容不显示。修改 modules/resume_parser.py、tests/test_resume_section_aliases.py、frontend/src/components/AIAssistant.jsx；未改数据库表、上传路由、简历生成模板或用户数据，未调用真实AI。
+调研依据：中国大学生在线和多所高校就业指导资料反复列出校园经历、科研经历、荣誉奖项、技能证书、语言能力、爱好特长等模块；在现有基本信息、教育、工作/实习、项目、技能和总结之外，新增 campus_experience、research_experience、awards、certificates、language_skills、interests 六个独立字段。
+备份：backups/modules/resume_parser_20260721_073734039.py.bak；backups/tests/test_resume_section_aliases_20260721_073734284.py.bak；backups/frontend/src/components/AIAssistant_20260721_073734517.jsx.bak；日志备份为 backups/Codex工作日志_20260721_074148629.txt.bak 与 backups/全局复利踩坑日志_20260721_074148894.txt.bak。
+变更：标题别名字典新增六类模块及常用中文标题；技能证书从skills移入certificates，科研经历从project_experience移入research_experience；AI JSON Schema规定各列表对象结构，并禁止无原文时编造；后端对所有列表字段做类型兜底，缺失或非列表统一为[]；React详情页为六类模块增加独立展示，并全部使用数组非空条件渲染。
+自动验证：标题专项5/5、简历读取6/6、完整后端59/59、两个Python文件py_compile、前端oxlint、Vite生产构建、git diff --check、三个源文件UTF-8无BOM均通过；真实AI调用0。
+运行验收：5000端口启动到PID 13148；首页、生产JS、CSS、简历文件接口均200，非法详情请求400；浏览器实际打开首页并确认简历解析引擎和上传入口可见，控制台0个项目错误，仅有外部Spline组件的Three.js重复导入警告；WebSocket禁用系统代理后返回PONG。
+失败与修正：HTTP验收变量误用$home复现只读变量冲突，WebSocket首次继承系统代理导致握手失败；分别改用$homeResponse和proxy=None后通过，已写入复利踩坑日志。
+结果：常见简历独立模块已贯通AI解析JSON、SQLite内parsed_data透传和React详情展示；对应列表为空或字段缺失时页面不生成该模块标题和空白区域。
+未处理观察：简历导出模板仍只展示原有字段，本次需求限定在上传解析和详情展示，未扩大修改范围；若后续要求导出的Word/PDF也显示新模块，应单独扩展 services/resume_documents.py 的多套模板。
+
+[2026-07-23] D4前补充：自我介绍别名扩充与个人实践独立模块
+请求与范围：补齐“自我介绍”和“个人实践”相关栏目；自我介绍保持单段summary，个人实践新增为可容纳多条记录的practical_experience列表。仅修改 modules/resume_parser.py、tests/test_resume_section_aliases.py、frontend/src/components/AIAssistant.jsx；未改数据库表、历史简历数据、导出模板，未调用真实AI。
+原因说明：自我介绍前天已映射到summary，但别名较少且前端只显示“综合摘要”；个人实践虽然有“实践经历/社会实践”别名，却被合并进work_experience，缺少独立字段和页面模块。
+备份：backups/modules/resume_parser_20260723_081105610.py.bak；tests与前端同批时间戳备份；日志追加前备份为 backups/Codex工作日志_20260723_081359569.txt.bak 与 backups/全局复利踩坑日志_20260723_081359863.txt.bak。
+变更：summary新增个人简介、关于我、自我描述、个人陈述、职业简介、核心优势等别名；新增practical_experience及个人实践、实践经历、社会实践、实训经历、兼职经历等别名；AI JSON Schema、提示词、列表类型兜底和React详情展示全部贯通；页面标题改为“自我介绍 / 综合摘要”，空列表仍不展示。
+测试：标题专项7/7、简历读取6/6、完整后端61/61、py_compile、前端oxlint、Vite生产构建及git diff --check均通过；主页、状态接口和简历列表接口均200，主页加载最新生产JS；真实AI调用0。
+网页验收：浏览器刷新5000端口最新页面，已解析简历详情能看到“自我介绍 / 综合摘要”新标题；历史记录仍按旧解析结果展示“个人实践”，必须重新上传解析后才会进入新的个人实践模块，未擅自迁移旧数据。
+浏览器观察：日志中保留了旧资源 index-CbqKq-eo.js 的 setTPhoto 未定义错误；当前新资源 index-CoH3YK70.js 错误数为0。该旧错误不属于本次简历解析范围，未顺手扩大修改。
+清理：核验6个__pycache__绝对路径均位于D:\AI_ONE后删除；未触碰用户简历、数据库、日志、备份和依赖。
+结果：新上传简历出现自我介绍类标题时提取到summary；出现个人实践、社会实践、实训或兼职类标题时独立提取到practical_experience，并仅在有内容时显示“个人实践”。
+
+[2026-07-24] D5：简历关键字段证据追踪
+请求与范围：为姓名、电话、邮箱、求职意向、技能5个关键字段增加原文证据追踪；Python负责回原文核对，AI不生成行号。未提前实现D6的Schema校验、关键字段缺失提醒或手动纠错，未调用真实AI，未迁移历史简历。
+备份：backups/modules/resume_parser_20260724_080902113.py.bak；backups/frontend/src/components/AIAssistant_20260724_080902485.jsx.bak；日志追加前备份为 backups/Codex工作日志_20260724_081531872.txt.bak 与 backups/全局复利踩坑日志_20260724_081532254.txt.bak。
+后端变更：新增RESUME_EVIDENCE_FIELDS、find_value_source和build_field_evidence；逐行使用enumerate定位，使用max/min安全截取前后文；精确原文匹配置信度1.0，忽略空格、横线和括号后的规范化匹配为0.9；原文不存在的AI返回值不生成证据。field_evidence随完整parsed_data自动写入现有SQLite文本字段，无需改表。
+前端变更：简历详情的姓名、电话、邮箱、求职意向和技能有证据时显示“查看依据”，点击后展示字段值、原文行号和原文；无证据或历史简历没有field_evidence时不显示按钮并保持兼容。
+永久测试：新增5项证据测试，覆盖5字段贯通、电话格式差异、AI给出原文不存在的技能不采信、首行上下文不发生负索引回绕、空值和错误类型忽略。
+验证：py_compile通过；简历专项18/18；完整后端66/66；Vite生产构建通过；UTF-8无BOM。首页200、简历列表200且返回1条、WebSocket PONG；浏览器实际打开页面、旧简历详情可正常进入、浏览器控制台错误0。
+环境处理：系统Python与桌面练习虚拟环境均未安装pytest，测试按项目原有README改用unittest；Codex捆绑Python因用户级uvicorn缺click无法启动服务，改用依赖完整的系统Python；本地urllib首次继承代理返回假502，显式ProxyHandler({})后通过。均未安装、删除或修改系统依赖。
+结果：D5最小闭环完成。新上传并成功解析的简历会自动带5类可核对证据；历史简历不会伪造证据，需要以后重新上传解析才会生成。
+【2026-07-26｜建立学习测试迁移与通过闸门】
+
+用户要求：
+- 后续测试不再复用刚学过的原代码和原案例，统一改为同结构的新场景迁移题。
+- 默认难度提升至 5/10，采用多维度 100 分制评分。
+- 75 分以下重新教学；存在错题时，必须先讲错题，再做变式复测，通过后才能继续。
+
+执行记录：
+- 修改前已备份：
+  - backups/全局控制台_20260726_234322309.txt.bak
+  - backups/Codex工作日志_20260726_234322878.txt.bak
+- 已在《全局控制台.txt》新增“规则 9：学习测试迁移与通过闸门”。
+- 已同步写入 Codex 长期学习规则记忆，供后续教学调用。
+
+[2026-07-27] D6暗线：简历Schema质量门与关键字段提醒
+请求与范围：完成D6最小暗线闭环；对AI简历解析结果增加Pydantic Schema边界、列表字段规范化、关键字段缺失提醒、中文验证错误、前端提醒和自动测试。未实现手动纠错入口，未扩展confirmed/inferred/not_found/conflict事实状态，未调用真实AI，未上传或修改真实简历。
+备份：backups/modules/resume_parser_20260727_033428947.py.bak；backups/routers/resumes_20260727_033429289.py.bak；backups/frontend/src/components/AIAssistant_20260727_033429629.jsx.bak；backups/core/api_responses_20260727_033546625.py.bak；日志追加前备份为backups/Codex工作日志_20260727_033816734.txt.bak与backups/全局复利踩坑日志_20260727_033817079.txt.bak。
+结构变化：新增modules/resume_schema.py作为独立质量门，包含根Schema、九类嵌套条目Schema、字段中文映射、验证错误翻译、质量提醒与统一validate_resume_payload入口；resume_parser.py从454行降至440行，只在AI返回后调用质量门并继续生成原文字段证据；routers/resumes.py从209行增至217行，透传安全的422错误详情；core/api_responses.py从210行增至211行，登记RESUME_SCHEMA_INVALID；AIAssistant.jsx从800行增至801行，上传后显示提醒数量，详情页展示中文检查项。
+业务规则：缺失或None的列表统一为[]；列表外层错误类型统一降级为空列表并产生AI_FIELD_TYPE_NORMALIZED提醒；姓名、电话或邮箱、求职意向、技能缺失时产生具体quality_warnings并标记quality_status=needs_review；可选空字段继续隐藏且不制造普通缺失提醒；嵌套字段类型错误阻止保存，返回中文字段路径且不回传原始敏感输入。
+永久测试：新增tests/test_resume_schema.py 6项和tests/test_resume_upload_quality.py 2项，覆盖合法默认值、None/缺失/错误列表规范化、四类关键字段提醒、嵌套字段中文错误、非对象AI结果、临时SQLite持久化、上传成功提醒及422错误合同。
+自动验证：6个Python文件py_compile通过；Schema与上传专项8/8；相关专项33/33；完整后端74/74；pip check无损坏依赖；前端oxlint和Vite生产构建通过；git diff --check通过；7个变更源文件UTF-8无BOM。
+运行验收：服务启动至PID 26612；首页、/api/status、/api/resumes/list均200；最新生产资源index-CJpKZrm5.js与index-CPGgA3-k.css均200；WebSocket按JSON协议收到log、pong；真实offerforge.db在运行验收前后SHA-256均为D14BF185C363C393D87609F1EEBC8C7C47A2E714CFB5FBBF2898099E796649AF；真实AI调用0、真实用户数据写入0。
+清理：D5与D6累计两批代码改动后，核验绝对路径均位于D:\AI_ONE并删除6个测试生成的__pycache__目录，剩余0；未触碰源码、数据库、日志、备份、依赖、用户文件或运行日志。
+浏览器限制：浏览器插件仍被外部“failed to write kernel assets”故障阻塞，因此未声称可视化控制台验收通过；生产构建、最新静态资源、真实HTTP和WebSocket已独立验证。
+结果：D6暗线最小闭环完成。AI结果不再直接进入SQLite和前端；关键字段缺失会提示检查，可选空板块保持隐藏，结构错误有稳定中文反馈。
+后续边界：手动纠错入口和四状态事实体系留到后续产品迭代，不在本次D6最小闭环内扩大实现。
+[2026-07-29] D7暗线：10类简历解析基线评估
+请求与范围：跳过单独PRD，直接完成D7简历解析暗线；使用10类匿名模拟简历评估原文、模块、缺失和异常。未调用真实AI，未读取或修改真实简历与SQLite数据，未修改生产解析逻辑。
+文件：新增 tests/test_resume_d7_baseline.py；新增 reports/D7_简历解析基线报告.md；日志修改前备份为 backups/Codex工作日志_20260729_231731022.txt.bak。
+场景：标准TXT、同义标题TXT、无标题TXT、Word段落、Word表格、两页PDF、可选模块缺失、关键字段缺失、空白TXT、损坏Word，共10类。
+验证：新测试文件py_compile通过；D7专项10/10；完整后端84/84。空白文件在AI调用前拦截，所有临时样本由TemporaryDirectory隔离并自动清除。
+结果：D7简历解析读取与质量基线通过；原文保留、标题映射、缺失状态和异常路径均已有永久回归测试。
+边界：本轮使用Mock替代真实AI，因此不宣称真实模型内容准确率、证据匹配率或幻觉率达到上线标准；扫描件PDF OCR也不在本轮范围。
+自检修正：首次UTF-8无BOM检查把含中文路径写进PowerShell传给Python的Here-String，路径在管道中被替换为问号并导致OSError；未影响项目文件。改用PowerShell Resolve-Path/Get-ChildItem和.NET ReadAllBytes后，测试文件、报告和工作日志均确认UTF-8无BOM。
+[2026-08-02] D8暗线：岗位采集前的求职意向确认闭环
+请求与范围：在现有“岗位采集”板块内增加求职意向识别、人工确认和可编辑入口，不新建产品板块；确认后才允许启动采集。本轮不实际启动外部爬虫、不调用真实AI、不写入真实业务数据。
+备份：routers/jobs_20260802_014616066.py.bak、services/job_collection_20260802_014616506.py.bak、modules/job_scraper_20260802_014616915.py.bak、frontend/src/components/JobMarket_20260802_014617328.jsx.bak；浏览器发现旧切换错误后另备份AIAssistant_20260802_015413531.jsx.bak；日志追加前也已分别备份。
+变更：新增services/job_intent.py以及两组永久测试；新增POST /api/jobs/intent/extract和POST /api/jobs/intent/confirm；识别职位、城市、薪资范围和限制条件，保留缺失/倒置状态供用户修改，不静默替用户做决定；岗位采集Service与Scraper使用确认后的城市和条件；前端在岗位采集引擎内加入原话输入、AI识别、编辑、确认、启动门控。
+额外最小修复：AIAssistant切换板块时调用已不存在的setTPhoto，造成浏览器ReferenceError；删除该失效调用，未修改照片业务。
+验证：后端unittest 94/94；新意向Service/Router测试10项；前端oxlint和Vite生产构建通过；git diff --check通过；真实HTTP首页、状态、简历列表和确认接口200，薪资倒置422；WebSocket收到PONG；真实SQLite验收前后SHA-256一致；浏览器完成选择简历、填写城市、确认条件并看到“可以启动岗位采集”，最新构建板块切换控制台错误0。
+结果：D8三条学习主线与暗线均完成。求职意向现在是爬虫前置的人机确认关卡，用户可以改正AI结果，未确认时不能启动采集。
+边界：AI识别接口的自动化测试使用Mock，真实DeepSeek效果需要后续用匿名样本做内容评估；本轮没有点击启动采集，避免产生真实外部访问和后台采集任务。
+[2026-08-02] D8补丁：修复前端本地后端地址不一致
+请求与范围：处理岗位采集页“网络连接失败”；只修改frontend/src/components/JobMarket.jsx和AIAssistant.jsx中的API基地址，以及岗位页三条连接失败提示，不改后端、爬虫或业务数据。
+备份：JobMarket_20260802_214538597.jsx.bak、AIAssistant_20260802_214538607.jsx.bak；日志追加前备份为Codex工作日志_20260802_214818819.txt.bak和全局复利踩坑日志_20260802_214818819.txt.bak。
+变更：把硬编码http://localhost:5000改为window.location.origin，使前端请求自动跟随当前网页的协议、主机和端口；提示改为“无法连接本地服务”，避免把本地后端问题误报为互联网断线。
+验证：前端oxlint通过、Vite生产构建通过、最新JS index-DTyhfmaJ.js返回200、首页和状态接口200、WebSocket PONG、UTF-8无BOM、diff check通过；真实网页在127.0.0.1完成AI意向提取并正确得到职位/城市/薪资/限制条件，提取接口200、确认接口200、启动采集按钮解锁，最新构建控制台错误0；未点击启动采集。
+运行状态：后端原进程已停止，已用最终代码重新启动，PID 3292，5000端口保持运行。保留修复后的127.0.0.1页面供用户检查。
+结果：D8地址连接缺陷已修复；网页和API不再混用127.0.0.1与localhost。
+
+[2026-08-04] D9暗线：JD结构化分析、原文证据与可解释匹配
+请求与范围：完善现有第5板块“JD匹配度评分”；在单条JD匹配前增加结构化分析、证据核对、硬性门槛与加分项区分，并在页面展示。未修改岗位采集、批量评分、简历解析、精准优化、投递或真实业务数据；未生成演示简历，未调用真实AI。
+备份：backups/services/job_matching_20260804_021921333.py.bak；backups/modules/jd_matcher_20260804_021922281.py.bak；backups/frontend/src/components/AIAssistant_20260804_021923280.jsx.bak；日志追加前备份为backups/Codex工作日志_20260804_022700870.txt.bak和backups/全局复利踩坑日志_20260804_022701215.txt.bak。
+结构变化：新增modules/jd_analysis.py作为独立JD分析与质量门；新增tests/test_jd_analysis.py和tests/test_jd_match_analysis.py。修改services/job_matching.py，使单条匹配按“JD分析→Python证据检查→简历评分”执行；修改modules/jd_matcher.py，把已核对的结构化JD加入评分上下文；修改AIAssistant.jsx，在原匹配分数上方展示岗位名称、职责、硬/软技能、硬性门槛、加分项、关键词及原文行号。
+质量规则：AI evidence必须能在JD原文逐行找到，找不到则自动移除并产生提醒；“优先/加分”等证据强制归入required=false；硬门槛或加分项中的年限、数量若原文证据不存在则自动移除；Kimi、Claude等专有名词由Prompt要求保持原样；分析失败停止评分并返回UPSTREAM_ERROR。
+测试：新增9项专项测试，覆盖证据行号、专有名词、优先项纠偏、无证据内容移除、虚构年限拦截、AI非法JSON、分析前置、成功响应和502错误合同；完整后端103/103通过。Python py_compile、pip check、git diff --check、6个目标文件UTF-8无BOM通过；前端oxlint与Vite生产构建通过，最新资源index-CUql9BF6.js和CSS均200。
+运行验收：最终服务PID 11024运行在5000端口；首页和/api/status均200；短JD真实HTTP返回400 INVALID_INPUT；32条API路由、重复0；WebSocket收到PONG。浏览器实际进入第5板块，看到“解析JD并匹配”，短JD提示正常，项目控制台错误0；仅保留外部Spline的Three.js重复导入警告。未提交真实JD、未消耗真实AI额度。
+清理：D8补丁与本批累计达到两次代码改动；核验6个__pycache__绝对路径均位于D:\AI_ONE后删除，剩余0。未触碰源码、正式测试、数据库、日志、备份、依赖或用户文件。
+结果：D9三条学习主线和暗线编码完成。用户下一步将先确认，再单独生成包含常用字段与边界字段的演示简历，并由用户观看完整流程验收。
+未处理观察：本轮只增强单条JD匹配；批量评分仍使用现有快速评分流程，避免对每个采集岗位额外增加一次AI分析调用和成本。真实DeepSeek内容效果需在用户批准的演示流程中验证。
+
+[2026-08-04] D9补丁：简历优化防杜撰、全栏目贯通、完整导出与页面状态保留
+请求与范围：按用户指定完成四步修复。第1步禁止AI新增简历事实；第2步让优化、覆盖和数据库保存保留全部非空栏目；第3步让模板与导出按实际数据动态展示全部非空栏目；第4步切换功能板块时保留本次AI优化结果。未调用真实AI，未覆盖真实简历，未改写真实SQLite业务数据。
+备份：backups/services/resume_optimization_20260804_031957757.py.bak、resume_documents_20260804_031957999.py.bak、resume_precision_20260804_031958228.py.bak；backups/routers/resume_actions_20260804_031958466.py.bak；backups/frontend/src/components/AIAssistant_20260804_031958696.jsx.bak；日志追加前备份为backups/Codex工作日志_20260804_033247989.txt.bak和backups/全局复利踩坑日志_20260804_033247989.txt.bak。
+第1步：新增modules/resume_optimization_guard.py。AI提示词把原始结构化简历和raw_text作为唯一事实来源，明确禁止新增公司、学校、项目、岗位、证书、奖项、技能、时间、数字和成果；保留不确定语义和专有名词；Python合并层固定身份字段、经历条数和原技能，并阻断原文没有的新数字或新技能。
+第2步：services/resume_optimization.py返回完整optimized_resume、质量提醒和栏目统计；services/resume_documents.py覆盖时使用安全合并，项目经历不再误塞进工作经历；JSON和SQLite在同一次事务式流程中更新，异常时回滚数据库并恢复JSON；原简历中的教育、实践、校园、科研、奖项、证书、语言和兴趣等栏目保持不丢失。
+第3步：模板和直接导出新增动态栏目渲染，只显示有内容的期望薪资、项目、实践、校园、科研、获奖、证书、语言和兴趣；新增POST /api/resume/export-optimized，使用户可以直接导出当前页面里的优化结果，无需先覆盖原简历。
+第4步：AIAssistant切换板块时不再执行setOptResult(null)；只有用户主动发起一次新的AI优化时才清除旧结果。返回页面后可以继续查看、覆盖或导出刚才的结果；优化结果区同步展示全部非空栏目和质量提醒。
+永久测试：新增tests/test_resume_optimization_integrity.py 6项，覆盖虚构公司/数字/技能拦截、身份和全栏目保留、JSON与SQLite一致、模板与导出完整展示、空栏目隐藏、切换板块不清空结果及新导出接口前端接线。
+验证：目标Python文件py_compile通过；新增专项6/6；完整后端109/109；前端oxlint和Vite生产构建通过；pip check无损坏依赖；git diff --check通过；7个目标文件UTF-8无BOM；33条API路由、重复0。最终服务PID 6076运行在5000端口；首页、/api/status、/api/resumes/list均200；导出接口缺少文件名返回400；真实offerforge.db在HTTP验收前后哈希一致。浏览器实际加载最新前端并进入“智能优化简历”板块，项目控制台错误0，仅保留外部Spline的Three.js重复导入警告。
+安全边界：本轮Mock故意返回虚构内容用于验证拦截，没有消耗DeepSeek额度；已有历史简历如果过去已经被AI覆盖成错误文字，本补丁只防止以后继续杜撰，不会自动猜测并还原已经丢失的原句，应通过原始上传文件重新解析或人工核对恢复。
+清理：核验6个__pycache__绝对路径均位于D:\AI_ONE后删除，剩余0；未删除源码、测试、数据库、日志、备份、依赖或用户文件。
+
+[2026-08-04] 简历深度优化：具体岗位/JD、可迁移能力与版本底稿
+请求与范围：解决跨行业简历只做文字润色的问题；降低模型温度，要求具体岗位或JD，增加直接匹配/可迁移能力/能力缺口分析，并把原始解析底稿和后续优化版本分开保存。保持禁止杜撰，不调用真实AI，不修改现有真实简历或SQLite数据。
+备份：backups/modules/resume_optimization_guard_20260804_035536326.py.bak、resume_parser_20260804_035537037.py.bak；backups/services/resume_optimization_20260804_035536564.py.bak、resume_documents_20260804_035536796.py.bak；backups/routers/resume_actions_20260804_035537274.py.bak；backups/frontend/src/components/AIAssistant_20260804_035537506.jsx.bak；backups/tests/test_resume_optimization_integrity_20260804_035537742.py.bak；日志备份为Codex工作日志_20260804_040533800.txt.bak和全局复利踩坑日志_20260804_040534072.txt.bak。
+Prompt与质量门：实际Prompt新增job_description，明确跨行业改写必须区分direct_matches、transferable_matches和gaps；summary与每段经历描述必须携带逐字原文evidence；Python验证证据确实存在、数字未新增、经历身份与数量未改变。原技能可以按目标岗位相关性重排，但新技能只能进入缺口和建议。
+输入规则：只填写“金融行业/互联网行业”等宽泛目标且未提供有效JD时，接口返回400 INVALID_INPUT并要求具体岗位或JD；填写具体岗位或完整JD后才进入AI。DeepSeek temperature从0.7调整为0.3，降低输出漂移。
+版本规则：新解析简历自动保存original_profile不可变底稿和空optimization_history；后续优化始终从original_profile出发，不从上一次活动优化版本继续污染；用户确认后保存最多5个优化版本，并记录active_optimization。旧简历没有快照时不假装已有原始底稿，会显示重新上传原文件的提醒，并从本次保存开始建立版本边界。
+前端：新增“具体岗位”“目标岗位JD”“额外要求”三个输入层级；结果区展示岗位能力映射、逐字证据、可迁移能力和能力缺口；“覆盖原简历”改为“保存优化版本”，确认文案明确原始底稿继续保留。
+永久测试：简历优化专项从6项扩展到10项，新增宽泛行业拦截、JD进入Prompt、temperature=0.3、证据化跨行业改写、技能重排、新解析原始快照、优化从原始快照而非活动版本开始等场景。
+验证：7个Python/JS目标文件语法检查通过；专项10/10；完整后端113/113；pip check无损坏依赖；git diff --check通过；7个目标文件UTF-8无BOM；前端oxlint与Vite生产构建通过。最终服务PID 37348运行在5000端口；首页、状态、简历列表均200；宽泛“金融行业”真实HTTP返回400且未调用AI；真实数据库验收前后哈希一致；33条API路由、重复0；最新JS/CSS与外部资源均200；WebSocket PONG。
+浏览器验收：实际进入智能优化简历板块，看到具体岗位、JD和额外要求输入框；选择演示简历并提交“金融行业”后，页面正确显示具体岗位/JD提示。项目控制台错误0，仅有外部Spline/Three.js重复导入警告。
+边界：现存两份旧简历创建于原始快照功能之前，其中林晓舟结构化顶层已被旧AI结果覆盖；系统不会猜测恢复。要验证新深度优化的真实效果，应重新上传原始DOCX/PDF/TXT生成干净底稿，再输入具体岗位和JD。本轮未调用真实DeepSeek，因此只证明数据流、证据门和版本机制正确，不宣称真实模型内容质量已最终验收。
+
+[2026-08-05] D10暗线误操作回滚
+请求与范围：用户指出未明确确认代码改动。本轮仅回滚未经确认加入的能力状态提示补丁，并停止D10暗线实现；不新增功能，不修改数据库、真实简历、岗位数据或真实AI调用。
+回滚文件：modules/resume_optimization_guard.py、frontend/src/components/AIAssistant.jsx、tests/test_resume_optimization_integrity.py；三者SHA-256均与本次修改前备份完全一致。
+备份：回滚前新增保留当前状态的三份源码备份；日志备份为backups/Codex工作日志_20260805_000947569.txt.bak与backups/全局复利踩坑日志_20260805_001112745.txt.bak。
+验证：Python编译通过；简历优化专项10/10通过；前端oxlint与Vite生产构建通过；本地服务已重启至PID 15348，首页和/api/status均200，当前JS /assets/index-BSJ-AIMV.js返回200。
+结果：未经确认的D10暗线代码已完全回退。后续只讨论简历解析进度条方案，等待用户明确确认后再写代码。
+
+[2026-08-05] 简历解析体验优化：方案C真实加载状态条
+请求与范围：用户明确确认“按方案C做简历解析进度条”。只在“简历解析”上传/解析请求进行期间增加不确定型加载状态条；不新增后端接口、不伪造百分比、不修改解析、AI、数据库、简历数据或导出逻辑。
+备份：backups/frontend/src/components/AIAssistant_20260805_001808280.jsx.bak；日志追加前备份为 backups/Codex工作日志_20260805_001808306.txt.bak。
+变更：frontend/src/components/AIAssistant.jsx 在 uploading（正在上传/解析）状态下展示“正在解析简历”和“上传 · 读取 · AI提取 · 检查”，使用 parseProgressFlow（进度条流动动画）显示持续流动的青色光带；请求成功或失败后沿用原状态信息并自动隐藏。新增 tests/test_resume_parse_progress_ui.py，锁定该界面合同，避免后续误改成随机进度或删除状态提示。
+验证：专项 unittest 1/1、完整后端 unittest 114/114、前端 npm run lint、npm run build 均通过；服务重启至 PID 26444，首页、/api/status 和最新资源 /assets/index-Dew0mb8r.js 均返回 200，构建资源包含“上传 · 读取 · AI提取 · 检查”。未上传真实简历、未调用真实AI、未写入真实业务数据。
+结果：简历解析已有诚实的“正在处理”反馈，不会再让用户在请求期间无感等待。真正0-100%的分阶段进度需后端返回任务阶段并通过轮询、SSE或WebSocket同步，属于后续独立优化范围。
+
+[2026-08-05] P0体验优化：AI简历优化与岗位采集加载状态条
+请求与范围：用户明确要求“把刚刚P0级的都写上进度条”。在已完成的简历解析基础上，只补齐AI优化简历和岗位采集两个P0动作的诚实加载状态；不伪造百分比，不新建后端进度接口，不改变AI、采集、数据库或岗位业务逻辑。
+备份：backups/frontend/src/components/AIAssistant_20260805_003611075.jsx.bak；backups/frontend/src/components/JobMarket_20260805_003611394.jsx.bak；日志追加前备份为 backups/Codex工作日志_20260805_003611716.txt.bak。
+变更：AIAssistant.jsx 在 optLoading（正在AI优化）期间显示“正在优化简历 / 读取底稿 · 分析岗位/JD · 生成优化稿 · 检查”，复用已有不确定型流动动画；JobMarket.jsx 在 scrapeLoading（正在提交采集任务）期间显示“正在提交采集任务 / 校验条件 · 创建任务 · 等待启动”，使用独立 jobProgressFlow 动画。两条均在请求结束后自动隐藏；岗位采集条准确描述的是“提交并启动任务”，不冒充后台爬取全过程进度。测试文件 tests/test_resume_parse_progress_ui.py 扩展为两项，覆盖解析、AI优化和采集启动三个P0状态条。
+验证：专项 unittest 2/2、前端 npm run lint、npm run build 均通过；服务重启至 PID 24900，首页、/api/status 和最新资源 /assets/index-B9lZ9FWo.js 均返回200，资源包含两条新增加载文案。首次验收命令因目录与PowerShell变量命名问题失败，未影响代码，已改正并写入全局复利踩坑日志。未上传真实简历、未调用真实AI、未启动真实岗位采集、未修改真实业务数据。
+结果：三个P0用户动作现在都有统一的“正在处理”反馈。真正的爬取数量、百分比或每步完成度仍需后端任务状态回传，保留为后续独立优化。
+
+[2026-08-05] P0体验优化补齐：批量JD匹配加载状态条
+请求与范围：用户要求为“批量JD匹配”也添加进度条。只修改前端批量评分请求进行时的界面反馈，不改评分算法、岗位数据、阈值、AI调用或后端接口。
+备份：backups/frontend/src/components/AIAssistant_20260805_004007253.jsx.bak；日志追加前备份为 backups/Codex工作日志_20260805_004007576.txt.bak。
+变更：AIAssistant.jsx 在 batchLoading（正在批量评分）期间显示“正在批量匹配岗位 / 读取岗位 · 逐岗评分 · 筛选结果 · 保存”，复用现有流动加载动画；请求成功或失败后自动隐藏。tests/test_resume_parse_progress_ui.py 同步锁定这组文案和状态，避免后续删除或变为随机百分比。
+验证：专项 unittest 2/2、前端 npm run lint、npm run build 均通过；服务重启至 PID 11472，首页、/api/status、最新资源 /assets/index-7VVCBQNF.js 均返回200，资源确认包含批量匹配加载文案。未提交真实岗位批次、未调用真实AI、未修改真实业务数据。
+结果：简历解析、AI优化简历、岗位采集启动、批量JD匹配四个高频耗时动作均有诚实加载反馈。批量评分的真实逐岗百分比同样需要后端逐条任务状态，当前不伪造。
+
+[2026-08-06] D11暗线：能力缺口建议折叠展示与JD依据校验
+请求与范围：用户确认开始修改后，将“能力缺口”改为默认只展示简短建议，用户点击“查看建议”才展开岗位依据、当前状态和写入条件；建议只用于提示，不自动写入正式简历。本批不实现D13的接受/拒绝、持久化选择或覆盖保存流程，不修改路由、数据库、导出和真实简历数据。
+备份：backups/modules/resume_optimization_guard_20260806_033113527.py.bak；backups/services/resume_optimization_20260806_033113784.py.bak；backups/frontend/src/components/AIAssistant_20260806_033114022.jsx.bak；backups/tests/test_resume_optimization_integrity_20260806_033114262.py.bak；backups/tests/test_resume_parse_progress_ui_20260806_033114496.py.bak；日志追加前备份为backups/Codex工作日志_20260806_033114732.txt.bak。
+变更：优化提示词要求能力缺口返回能力、JD逐字依据、可执行建议和优先级；validated_capability_analysis只保留能在已提交JD中逐字核对的依据，缺少JD时明确标注为仅基于岗位名称；每条建议固定返回“简历未体现，不代表不会”和“用户确认真实经历后才可写入正式简历”。前端新增折叠状态，默认只显示能力、优先级和一句建议，点击后才展开完整说明；每次重新优化会收起旧展开状态。
+测试：Python编译通过；简历优化与进度条专项14/14通过，新增测试覆盖伪造JD依据过滤、建议不进入技能、固定写入条件和折叠文案；完整后端117/117通过；前端oxlint和Vite build通过。服务重启至PID 25004，首页、/api/status和最新资源/assets/index-CO895vbo.js均200，资源含“查看建议”和“写入条件”。未调用真实DeepSeek、未覆盖真实简历、未写入真实数据库。
+浏览器观察：按浏览器技能尝试页面交互验收时，Codex浏览器运行环境仍在初始化阶段报“failed to write kernel assets”，属于已知外部插件阻塞；因此不把HTTP和构建结果描述为浏览器控制台验收通过。
+结果：D11的“建议与事实边界”在界面上得到最小落地：信息不再堆成一长段，用户需要时才展开；未经JD依据核对的建议不会展示，未经用户确认的能力也不会写进简历。
+
+[2026-08-09] D13暗线：能力缺口逐条确认与优化版本持久化
+请求与范围：按D13计划实现能力缺口建议的接受、不采用、撤销选择和真实经历确认；只有用户确认的内容可以作为优化版本中的已确认资料。未新增数据库表、未修改路由、未调用真实DeepSeek、未上传或覆盖真实简历。
+备份：backups/modules/resume_optimization_guard_20260809_022840257.py.bak；backups/services/resume_documents_20260809_022840633.py.bak；backups/frontend/src/components/AIAssistant_20260809_022840987.jsx.bak；backups/tests/test_resume_optimization_integrity_20260809_022841375.py.bak；日志追加前备份为backups/Codex工作日志_20260809_023448092.txt.bak。
+变更：能力缺口新增稳定suggestion_id以及pending/accepted/rejected三种状态；accepted必须包含用户填写的confirmed_content，rejected和pending会清空该内容。前端能力缺口卡片新增状态、接受并补充真实经历、不采用、撤销选择和确认进度；保存成功后保留当前结果便于继续查看。Service保存前再次校验确认状态，缺少真实经历时返回CONFIRMATION_REQUIRED；有效决定随optimization_history和active_optimization同时写入JSON与SQLite。优化版本新增resume_writer_inputs，它只包含已接受且有真实说明的内容；待确认和不采用的建议不会进入该清单，也不会自动添加到skills或其他正式简历字段。
+测试：Python编译通过；专项13/13通过；完整后端119/119通过；前端oxlint无错误（保留一个既有未使用rejectResume警告）且Vite生产构建成功；git diff --check通过；四个目标文件均为UTF-8无BOM。最终服务重启至PID 20944，/api/status返回200；最新JS和CSS均返回200，JS包含“接受并补充真实经历”和“确认进度：已接受”。浏览器实际进入“智能优化简历”板块，最新资源加载且控制台错误0；未调用真实AI生成结果，因此动态能力卡片通过专项测试和构建资源合同验收。
+结果：D13确认门完成。建议选择会跟随保存的优化版本持久化；未确认建议继续只作提示，接受但未填写真实经历会被前后端双重拦截，已确认内容也只记录为用户事实，不会自行杜撰进正式简历。
+未解决观察：AIAssistant.jsx中既有rejectResume函数未被使用，oxlint仅给出警告；它不影响D13功能，本次未越界清理。
+
+[2026-08-09] D14暗线：AI简历优化失败恢复工作流 v1
+请求与范围：只增强“智能优化简历”板块，实现结构化解析、有限重试、SQLite任务阶段、中间结果保存和刷新后恢复；未修改简历解析、模板、岗位采集、JD评分或真实简历。
+备份：backups/modules/db_client_20260809_052004850.py.bak、deepseek_client_20260809_052005077.py.bak；backups/services/resume_optimization_20260809_052005291.py.bak；backups/routers/resume_actions_20260809_052005526.py.bak；frontend、测试文件及日志均按同批时间戳备份。
+实现：新增resume_optimization_tasks表和持久化模块；新增创建/查询/重试任务API；DeepSeek chat增加可选异常上抛且不改其他板块默认行为；简历优化对超时、429、502/503最多补偿一次，权限或输入错误不重试；JSON允许一次外壳整理，不改写简历事实；前端展示真实阶段、任务编号、请求次数、失败原因和重试入口，localStorage绑定任务编号以支持刷新恢复。
+测试：Python目标文件py_compile通过；新工作流专项6/6；简历优化相关18/18；完整后端125/125；前端oxlint无错误（保留1个既有rejectResume未使用警告）；Vite生产构建通过；46条路由无重复；10个目标文件UTF-8无BOM。
+运行验收：最终服务PID 24168运行于5000端口；首页、/api/status、/api/resume/optimize/tasks/latest和最新本地JS均200；任务不存在返回404，非法重试返回409；WebSocket PONG；真实任务表行数为0，真实AI调用0次。
+边界：浏览器插件仍被外部failed to write kernel assets故障阻断，未宣称完成可视化控制台验收；已用HTTP、静态资源、构建和WebSocket独立验证。
+结果：D14暗线编码与自动化验证完成。
+清理：D13与D14累计两批改动后，核验6个__pycache__绝对路径均位于D:\AI_ONE后删除；未触碰源码、日志、备份、真实数据、用户文件或依赖。
+
+[2026-08-13] D15暗线：简历独立版本库、事务保护与前端版本记录
+请求与范围：用户明确回复“确认”后实施D15暗线。为简历解析和AI优化建立可查询的独立版本记录；前端默认折叠展示版本历史。未调用真实DeepSeek，未生成或覆盖真实简历内容，未扩展到D16/D17的版本切换、差异对比或一键回滚。
+备份：改动前已备份modules/db_client.py、modules/resume_parser.py、modules/resume_optimization_guard.py、services/resume_documents.py、routers/resumes.py、frontend/src/components/AIAssistant.jsx和data/offerforge.db；日志追加前备份为backups/Codex工作日志_20260813_070815681.txt.bak与backups/全局复利踩坑日志_20260813_070815706.txt.bak。
+数据库：新增resume_versions独立表，记录所属简历、版本编号、原始/优化类型、来源可信状态、优化模式、Prompt版本、目标岗位、完整内容、当前状态和创建时间；每份简历只能有一份原始底稿和一个当前版本，版本编号按“简历文件名+版本编号”联合唯一。真实库的3条旧版本已从早期全局唯一约束安全重建迁移，迁移前后版本行内容哈希相同；两份resumes.parsed_data与数据库备份逐项SHA-256一致。
+保存与兼容：新上传简历会同步写入原始版本；保存AI优化时，resumes、resume_versions和兼容JSON采用同一事务式流程，磁盘替换或数据库commit失败会回滚并恢复旧文件。旧简历历史幂等迁移；缺少可靠原始快照的旧资料标记为“旧数据底稿（原始性待确认）”，不会冒充已确认原件，也不能被重复保存偷偷升级可信状态。版本正文与目标、模式、Prompt等审计元数据同ID不可改写。
+接口：新增版本列表、当前版本、指定版本详情和删除历史版本接口。原始底稿和当前版本返回409禁止删除；不存在返回404；危险或保留版本编号返回400。删除非当前优化版本会同步独立版本表、resumes.parsed_data和兼容JSON，避免三份数据不一致。删除完整简历时同步清理版本记录。
+上传保护：修复上传解析完成但持久化失败时仍残留/覆盖原文件的问题。新文件失败会删除本次生成物；同名旧文件失败会恢复原字节。自动测试一度在真实resumes目录生成name:test测试文件，核对创建时间和内容确认是本轮测试产物后安全删除，并把测试目录永久隔离到TemporaryDirectory。
+前端：在“智能优化简历”选择简历后出现默认折叠的“简历版本记录”；展开后显示版本类型、当前状态、时间、优化模式、目标岗位和Prompt版本，点击才按需读取完整版本内容。预览覆盖教育、工作、项目、实践、校园、科研、奖项、证书、语言和兴趣等主要栏目；只允许删除非当前优化版本。列表、详情和删除均增加请求序号/当前简历核对，快速切换两份简历时旧响应不能覆盖新页面。
+永久测试：新增tests/test_resume_versions.py共13项，覆盖表结构与旧表无损重建、联合版本身份、原始/当前唯一约束、迁移幂等、旧底稿可信标签、审计元数据不可变、危险ID、JSON/SQLite/文件删除同步、文件替换与commit失败回滚、上传失败清理/恢复、HTTP 200/404/409合同和前端折叠/竞态合同。
+验证：专项13/13，完整后端138/138；目标Python文件py_compile通过；pip check无损坏依赖；git diff --check无空白错误（仅仓库既有LF/CRLF提示）；前端oxlint无错误，保留既有rejectResume未使用警告；Vite生产构建成功，最新资源/assets/index-D0MZsvad.js。9个目标源码均为UTF-8无BOM，测试残留resume.txt不存在。
+运行验收：最终服务PID 17384运行在5000端口；首页和简历列表200；两份真实简历的版本列表、当前版本、详情均200；缺失版本404；删除原始/当前版本409；危险版本编号400；真实库共有3条版本记录，每份简历恰好一个当前版本。浏览器实际选择林晓舟简历后看到折叠入口“简历版本记录(2)”，展开显示1个当前AI优化版本和1个原始版本，点击后完整预览10类主要栏目；控制台仅有外部Spline的Three.js重复导入警告。
+结果与边界：D15暗线编码和真实运行验收完成。当前可以保存、查询、查看和安全删除非当前历史优化版本；尚未提供“把历史版本设为当前版本”和“两个版本差异对比”，这两项按学习计划留给D16/D17。
+2026-08-15 D16 暗线：智能优化简历前后对比
+- 备份：修改前已备份 resume_optimization.py、AIAssistant.jsx、test_resume_optimization_integrity.py；日志写入前也已备份两份日志。
+- 后端：新增 modules/resume_version_diff.py，对本轮优化采用的简历底稿与 optimized_resume 做只读字段 Diff；忽略 raw_text、original_profile、_optimization_meta 等内部字段。
+- 返回结果：优化任务新增 resume_diff，随 result_data 一起写入 SQLite，因此刷新页面或切换板块后仍可恢复。
+- 前端：完整优化结果优先展示；其下新增默认折叠的“查看本次优化前后对比”，只显示新增、删除、修改字段，各字段继续按需展开；不展示未变化字段，不编造修改原因。
+- 版本记录：视觉顺序调整为优化结果及本次 Diff 之后，原查看/删除功能保持不变。
+- 测试：Python 编译通过；定向测试 16/16；全量 unittest 141/141；前端 lint 通过（仅保留既有 rejectResume 未使用警告）；Vite 生产构建通过；相关文件 UTF-8 无 BOM。
+- HTTP：本地首页 200，生产 JS 资源 200，已确认服务器返回的资源包含“查看本次优化前后对比”。
+- 边界：浏览器自动点击检查因本机浏览器工具报“failed to write kernel assets”未完成，未把该项记为通过；未调用真实 DeepSeek，未消耗 API 额度。
+
+[2026-08-18] D17 暗线：安全设为当前版本与真实回滚
+请求与范围：用户确认后实施。仅新增“把历史版本（包括原始底稿）设为当前简历”的安全切换能力；不改 AI 提示词、简历解析、D16 Diff、模板、岗位采集和JD匹配。
+备份：改动前已备份 modules/resume_version_repository.py、services/resume_versions.py、routers/resumes.py、frontend/src/components/AIAssistant.jsx、tests/test_resume_versions.py 与本日志，备份保留5份。
+后端：仓库层新增 activate_resume_version；业务层使用同一 SQLite 事务先取消旧当前版、再设目标版为当前，并同步 resumes.parsed_data 与兼容JSON。磁盘替换或数据库提交失败时 rollback 并恢复原JSON，因此不会留下“两个当前版本”或“没有当前版本”。历史记录不删除；原始版本也允许重新设为当前。
+接口与前端：新增 POST /api/resumes/versions/{filename}/{version_id}/activate。版本记录中所有非当前版本都有“设为当前版本”按钮；点击后先显示明确确认说明，再请求切换。成功后刷新简历列表与版本记录、关闭旧预览、清除旧优化结果，避免用户把旧临时结果误当作新当前版本；历史版本仍保留且可再次切回。
+测试：Python目标文件 py_compile 通过；版本专项 15/15 通过；完整后端 unittest 143/143 通过；前端 Vite 生产构建通过。新增测试覆盖历史优化版回滚、原始版回滚、缺失版本404、模拟数据库commit失败时SQLite与JSON均不改变、API POST合同和前端按钮源码合同。
+运行验收：新服务启动PID 3776，首页200；新增activate接口对不存在版本返回404，未修改任何真实简历数据。生产浏览器视觉点击验收本次未自动执行；需要用户在版本记录中选择一条非当前版本，点击“设为当前版本”后确认即可做最终人工体验验收。
+结果：D17暗线实现完成。当前版本切换是用户明确确认后才执行的可逆操作；旧版本永远保留。
+
+[2026-08-20] D18 暗线：动态简历模板引擎（Schema驱动与6套风格自适应）
+请求与范围：用户确认后实施D18暗线。推倒原先半硬编码、残留“暂无”占位符的旧模板，建立100%纯数据驱动的“Schema → 动态组件映射”渲染引擎；自适应适配全部6套模板视觉规范；联动D17版本系统优先读取当前激活版本。不修改大模型调用、岗位采集、简历解析与数据库表结构。
+备份：改动前已向用户桌面（C:\Users\MR\Desktop\D18_动态模板重构前备份_20260820_060408）与项目backups目录进行双重可回滚备份。
+后端渲染：在 services/resume_documents.py 中实现全量 10 大标准模块的动态映射注册表（个人总结、求职意向与期望薪资、工作经历、项目经历、个人实践、校园经历、科研经历、教育背景、专业技能、获奖荣誉、证书资质、语言能力、兴趣爱好）。每一个模块严格执行“有数据则渲染对应组件，无数据0字节输出彻底销毁”，彻底消灭“暂无工作经历”等占位符与空标题。
+多风格CSS适配：为 classic（经典商务）、modern（现代暗黑）、dual（双栏技能）、magazine（杂志格调）、minimal（极简留白）、timeline（时间轴风）、elegant（复古暖黄）、tech（科技蓝调）全量注入对全组件的专属排版；双栏模板实现“左栏短属性聚合+右栏长叙述经历”自适应分流，无断层。
+版本联动：resume_template 优先读取 SQLite resume_versions 表中 is_current=1 的当前激活版本数据，回退读取本地文件，确保历史回滚后模板预览与导出实时所见即所得。
+永久测试：新增 tests/test_resume_dynamic_templates.py 共 4 大套测试（覆盖应届生0工作经历无暂无无空标题、资深专家全量高级模块不丢、极简简历紧凑无冗余、SQLite激活版本实时联动）。
+验证：新增动态模板测试 4/4 通过；全量后端 unittest 147/147 100% 全部通过；前端 Vite 生产构建 136ms 成功通过；FastAPI TestClient 模拟全链路回归 200 验证通过。
+结果：D18 暗线重构与自动化验证圆满完成。
+
+[2026-09-18] 暂停D19学习，保存进度并转向OfferForge 2.0
+请求：用户要求暂停当前四点巩固复测，保存进度，优先优化2.0。
+变更：新增 reports/D19_学习暂停与2.0接续_2026-09-18.md，记录技术基础已通过、AI技术认知总测71/100未通过、四点加强已讲解但四题复测未答，以及产品线与暗线未完成。保存原复测题和教学评分规则，恢复时从此处继续。
+检查：只读复核确认AI错误字符串被打招呼业务当成功结果、上传接口同步调用parse_resume两处问题仍存在。建议作为2.0第一批修复，当前未修改生产代码、45天Word、数据库或用户简历，未调用真实AI。
+备份：本日志追加前使用个人skill备份脚本保存于backups目录；新增接续文件没有旧版本。
+
+[2026-09-18] 2.0第一批修复与爬虫选型
+请求：修复开场白假成功、上传同步阻塞两处问题；整理优化点并调查GitHub爬虫候选。
+范围：services/delivery_service.py、routers/resumes.py；新增tests/test_upload_and_greeting_regression.py和reports/OfferForge_2.0优化清单与爬虫选型_2026-09-18.md。未修改爬虫、前端、依赖与数据库结构。
+备份：backups/services/delivery_service_20260918_105855924.py.bak；backups/routers/resumes_20260918_105855954.py.bak；backups/Codex工作日志_20260918_105855961.txt.bak。
+实现：开场白启用raise_on_error并拒绝空结果，上游失败返回502；上传限制读取大小，写文件/解析/保存进入线程池，进程内锁串行保护上传，解析异常恢复原文件。
+验证：定向8项、全量152项unittest通过；模拟HTTP端点错误和并发响应通过；修改代码AST检查通过且无UTF-8 BOM；data/resumes文件哈希未变化。未调用真实AI或做生产浏览器验收。Starlette/httpx弃用警告记录为后续依赖治理事项。
+未处理发现：采集平台名称51前程无忧与51job不一致；猎聘适配器为空实现；岗位URL固定广州。报告推荐先修链路，再试点Crawlee Python，Crawl4AI作为正文抽取备选，Firecrawl Skills仅作开发辅助；未安装第三方候选。
+
+[2026-09-18] 广州采集条件保护与边改边教
+范围：modules/job_scraper.py、services/job_collection.py；新增两份测试和reports/广州采集修复与模拟验收_2026-09-18.md。修复平台别名派发、取消乱码城市点击、编码URL参数、显式等待目标城市卡片、滚动后二次校验、严格城市过滤与失败停止保存评分。前端布局和真实业务数据不改。
+备份：backups/modules/job_scraper_20260918_113019549.py.bak；backups/services/job_collection_20260918_113019582.py.bak；工作日志及踩坑日志均备份。
+验证：8项Mock与4项隔离浏览器测试通过；全量164项通过；状态接口模拟HTTP 200并保留城市失败信息；AST通过；data/resumes哈希不变。真实招聘站点未验收，城市码沿用原配置，不宣称已解决所有网站侧城市问题。
+自纠错：模拟网页未声明UTF-8导致两项浏览器测试失败，补charset后通过。未采用修改生产规则迁就测试的方式。曾有两次补丁上下文不匹配，工具拒绝且文件未改变。
+边界：现有前端只提示启动，未增加轮询；此次错误可从既有状态API与日志查询。无需修改静态资源或重启前端。两批清理审查：本轮未生成可删除的临时修复文件，永久测试保留，不清理已有不明文件。
+
+[2026-09-18] 采集2.0阶段1：来源注册与真实能力声明
+范围：新增modules/job_sources.py与tests/test_job_sources.py；精确修改services/job_collection.py、modules/job_scraper.py、routers/jobs.py。统一来源代码及别名，未知/未实现平台在浏览器启动前拒绝，默认只选已实现51job，新增GET /api/jobs/sources。
+能力声明：51job标为implemented/simulation_passed/session unknown；猎聘标为not_implemented，不能启动采集。不把已有空函数当接入，不把有浏览器实例当已登录。前端布局未修改。
+备份：backups/services/job_collection_20260918_113921619.py.bak；backups/modules/job_scraper_20260918_113921655.py.bak；backups/routers/jobs_20260918_113921660.py.bak；工作日志同批备份。
+验证：定向17项通过；全量169项通过；修改Python AST检查通过；data/resumes哈希不变。新增HTTP来源查询200、未实现来源400路径验证。没有真实网站采集、登录或调用AI。
+剩余目标：来源实际扩展、多地区验证、持久登录会话、岗位描述关联检索、增量任务与提速仍未完成。下一批进入隔离会话存储与有效性状态，不宣称本阶段实现多网站可用。
+
+[2026-09-18] 采集2.0阶段2a：Windows加密会话存储
+范围：新增modules/job_sessions.py、tests/test_job_sessions.py；最小接入modules/job_scraper.py的浏览器创建与关闭。使用当前Windows用户DPAPI加密状态，文件位于LOCALAPPDATA/OfferForge/browser_sessions，不进入项目仓库。只保存对应站点域Cookie与HTTPS origin；过期Cookie不恢复，已标记过期的状态不加载；文件存在不等于当前已登录。读取失败使用独立空会话，不访问日常浏览器配置。
+备份：backups/modules/job_scraper_20260918_114215885.py.bak；backups/Codex工作日志_20260918_114215920.txt.bak。
+验证：6项会话测试含真实Edge上下文虚拟Cookie保存/恢复通过；全量175项通过；第一轮173项前后data/resumes哈希一致；AST通过。测试凭据全为虚拟值，存储均隔离在临时目录，未访问招聘网站或真实登录。
+边界：仅51job浏览器生命周期接入；登录/过期网页识别、用户登录交互、会话状态API和前端按钮尚未实现。会话警告目前留在scraper对象，未宣称用户界面可见。来源列表的session_persistence继续为false，直到可操作会话管理完成。非Windows系统明确不支持该加密存储，不回退明文。
+说明：Playwright storage_state支持Cookie/localStorage恢复；本批未启用IndexedDB/sessionStorage捕获，需实际站点认证机制验证后决定。参考https://playwright.dev/python/docs/auth。
+
+[2026-09-18] 采集2.0阶段2b：本机会话管理接口
+范围：新增services/job_session_management.py、tests/test_job_session_routes.py；修改routers/jobs.py。提供按来源查询无凭据元数据、明确确认后清除本地会话；拒绝跨站请求、非本机请求与采集运行中清除。清除不等于网站账号注销。
+备份：backups/routers/jobs_20260918_223111756.py.bak；工作日志同批备份。
+验证：5项接口专项和全量180项通过，AST通过；测试仅使用临时存储/模拟对象，不清除真实会话。前端未修改，未开展真实登录验收。
+边界：运行中保护适用于当前单进程事件循环；多进程部署前须引入跨进程任务锁。登录页交互与有效性检测仍待实现，当前状态不冒充已登录。
+
+[2026-09-19] 采集2.0阶段2c：折叠会话管理界面
+范围：新增frontend/src/components/JobSessions.jsx并在JobMarket.jsx挂载；新增tests/test_job_sessions_ui.py。默认折叠、按需加载来源/会话元数据、刷新、确认清除、处理中禁用操作、显示后端冲突与错误；请求序号避免旧响应覆盖新状态。
+备份：JobMarket.jsx与工作日志通过个人备份脚本于20260919_021408保存于backups对应目录。
+验证：前端lint无错误（保留既有rejectResume警告）、生产构建通过；真实Edge加载生产构建并拦截全部网络为模拟响应，验证折叠、取消不发请求、409提示、成功清除及按钮禁用，pageerror为0；全量181项通过。测试未清除真实会话。
+边界：5000/5173均无监听服务，本轮未启动生产后端，未声称真实HTTP/WS联调通过。静态构建已更新。尚无网页登录入口或真实登录有效性检查，页面明确说明该限制。不新增证据详情面板。
+
+[2026-09-19] 采集2.0阶段2d：用户手动登录与保守状态观察
+范围：新增services/job_login.py、tests/test_job_login.py；接入会话Service、采集互斥、jobs路由、JobSessions组件、来源能力声明及浏览器UI测试。独立工作线程管理浏览器；用户点击才打开可见窗口，可保存、取消，5分钟超时；检查动作使用无头浏览器。只依据允许域名页面的可见退出登录入口/密码表单做保守观察，未知不冒充登录成功，真实站点规则尚待账号验证。
+备份：修改前通过个人脚本备份，主体文件时间戳20260919_031155，UI测试031436，来源注册031609；日志均备份。
+测试：新增8项登录测试，覆盖取消/超时不保存、未知状态、过期观察、错误释放、陈旧任务、并发拒绝、外域拒绝及真实Edge模拟DOM；UI模拟点击登录/保存通过；全量189项通过。前端lint无错误（保留旧警告）、生产构建通过，Python AST通过。
+现场：未登录独立浏览器访问https://we.51job.com/返回200，标题我的51Job；这只证明入口可访问，不证明真实登录可用。本地服务仅绑定127.0.0.1:5000，实际页面会话按钮可见，状态API 200，JS/CSS 200，pageerror 0。未输入账号密码或保存真实登录状态。
+边界：/ws握手测试未通过，当前源码未找到该WebSocket路由，本功能使用HTTP轮询不依赖WS，未越界修复。首次WS验证命令引号错误后修正命令；不将WS记为通过。启动服务后更新来源能力声明，已重启本轮创建的服务加载最新代码。
+后续：真实用户手动登录验收、登录选择器适配、更多来源、多城市和岗位关联检索仍需继续。不把本轮模拟通过等同整体目标完成。
+
+[2026-09-19] 求职意向识别加载反馈与城市缺失诊断
+范围：JobMarket.jsx增加不定进度条、等待秒数、慢响应提示、处理中禁用重复操作、中文缺失字段提示及输入来源说明；新增test_job_intent_progress_ui.py和采集体验问题清单。网站会话管理视觉优化登记为P2，本轮不实施。
+诊断：提取接口只接收intent_text，不读取整份简历；简历选择只预填岗位与薪资。只读检查两份解析结果均无非空目标城市相关字段，不能据此断言原文没有城市。未复现明确城市被真实模型漏提，不自动拿学校/工作城市替代求职城市。
+备份：修改前JobMarket.jsx及工作日志已于20260919_182426备份。
+验证：前端lint与生产构建通过，保留既有rejectResume未使用警告；真实Edge加载生产构建、拦截模拟接口，验证等待提示、禁用、明确城市传递、缺失城市及失败恢复；全量190项测试通过。本地5000首页及新构建静态资源HTTP检查通过，无需重启后端。
+边界：未调用真实AI，未修改真实简历、数据库、后端提取规则或会话管理布局；模拟成功不等于真实模型城市提取已验收。
+
+[2026-09-19] 保存会话后的重新进入入口
+问题：登录入口固定显示“打开网站登录”，未表达已有会话可复用；刷新只读状态，不保存或打开浏览器。现场只读状态确认storage_status=saved、auth_status=unknown，最近任务failed，不据此宣称真实账号已登录。
+范围：JobSessions.jsx按是否保存显示“使用已保存会话打开网站”；job_login.py说明加载已保存会话、重新进入与5分钟窗口期限；不新增普通外链，不复制日常浏览器配置，不改变凭据存储或站点登录判断。
+备份：backups对应目录下20260919_182910批次，包含两项源码、两项测试与工作日志。
+验证：登录及UI专项10项通过，覆盖保存后刷新入口、再次点击、处理中禁用和后端storage_state传递；前端lint/build通过（保留既有rejectResume警告）；全量191项通过。重启本轮已核实的uvicorn服务，首页、新JS及CSS均200；模拟浏览器pageerror为空。本功能不使用WebSocket。
+边界：没有使用用户真实会话访问51job，没有验证网站是否接受当前凭据；保存状态不等于认证有效。P2视觉重做仍延后。本批没有产生需清理的临时修复文件，保留正式回归测试。
+
+[2026-09-19] 采集卡住问题分批修复：第一批冲突提示
+范围：仅修改services/job_collection.py的任务互斥提示，并在tests/test_job_sources.py补充回归测试；没有修改前端状态轮询。
+改动：真正采集运行时返回“岗位采集任务正在进行中”；网站登录窗口仍在等待时，返回“请先在会话管理中保存或取消登录，再启动采集”；两者均明确使用CONFLICT错误码。
+备份：backups/services/job_collection_20260919_183418261.py.bak、backups/tests/test_job_sources_20260919_183418294.py.bak、backups/Codex工作日志_20260919_183418299.txt.bak。
+验证：Python编译通过；来源与冲突专项6项通过；全量192项通过；重启本轮核实的本地uvicorn服务。现场状态接口200且running=false，会话接口200且login_task=null，本地加密会话仍为saved。
+边界：本批只修错误归因和解除提示；“前端持续查询并展示采集最终状态”留到第二批单独修复。未访问真实招聘网站，未写入真实岗位或简历数据。
+
+[2026-09-19] 采集卡住问题分批修复：第二批前端状态跟踪
+范围：仅修改frontend/src/components/JobMarket.jsx，更新现有静态断言并新增test_job_scrape_progress_ui.py；未再修改登录互斥或真实爬虫选择器。
+改动：启动成功后每1.5秒查询/api/jobs/scrape/status；展示后端真实阶段和已完成数量；成功后显示最终岗位数、刷新批次与岗位列表；失败后显示具体原因并恢复启动按钮；页面重新进入时可恢复跟踪仍在运行的任务；状态查询失败会退出加载状态并提示刷新，不再无限显示采集中。
+备份：backups/frontend/src/components/JobMarket_20260919_183650批次、backups/tests/test_resume_parse_progress_ui_20260919_183650批次、backups/Codex工作日志_20260919_183650595.txt.bak；自检纠错前另备份全局复利踩坑日志。
+验证：前端lint通过，保留既有AIAssistant.jsx rejectResume未使用警告；Vite生产构建通过；真实Edge加载生产构建并拦截网络为模拟后端，验证运行阶段、成功2个岗位、列表刷新、失败原因、按钮恢复及pageerror为空；专项4项、全量193项通过；服务重启后首页与新JS均HTTP 200。本功能不依赖WebSocket。
+自纠错：第一轮浏览器验收发现实时阶段在普通提示和进度组件重复，已收敛为进度组件单点展示并记录踩坑日志。
+边界：没有触发真实51job采集或调用AI；真实站点可用性仍需用户现场验收。两批改动清理检查未发现本轮临时修复脚本或缓存，正式回归测试保留。
+
+[2026-09-19] 采集2.0阶段3a：城市输入契约与启动前保护
+范围：modules/job_scraper.py、modules/job_sources.py、services/job_collection.py及两项既有测试；未改页面布局、登录状态或站点DOM选择器。
+改动：城市名称使用精确规范化，仅接受已配置城市及可选“市”后缀；取消包含关系，避免“不在广州”“广州天河”误命中广州。采集Service在读取简历和启动浏览器前拒绝未配置城市并返回target_city字段错误。来源能力明确标记configured_not_live_verified，不把代码表冒充真实站点已验收。
+备份：backups对应目录20260919_184308批次，包含三项生产源码、两项测试与工作日志。
+验证：Python编译通过；城市、来源及隔离浏览器专项20项通过；全量195项通过；覆盖广州市规范化、深圳代码、模糊文本拒绝、未知城市启动前拒绝。未访问真实招聘网站，未修改业务数据库或用户文件。
+边界：城市码是现有配置，不代表已逐城真实验收；最终至少广州及另外两个城市仍需用户统一实测。下一批进入有限岗位查询扩展和去重排序。
+
+[2026-09-19] 会话管理P2视觉优化
+范围：仅修改frontend/src/components/JobSessions.jsx及体验问题报告；测试沿用并复验现有会话与采集状态浏览器用例。没有改变登录、DPAPI存储、清除确认、任务互斥或采集逻辑。
+改动：保留默认折叠；增加每来源独立卡片、保存/未知/未接入状态标签、主次操作按钮、对应来源任务说明和统一提示区。页面说明压缩为首次登录、保存复用和刷新边界，不增加证据面板。
+备份：backups对应目录20260919_184522批次，包含JobSessions.jsx、UI测试、体验报告和工作日志。
+验证：前端lint与生产构建通过，保留既有rejectResume未使用警告；真实Edge生产构建模拟会话和采集状态2项通过，pageerror为空；全量195项通过。重启本地服务后首页、新JS和来源接口均HTTP 200。
+边界：没有使用真实账号访问51job，也没有把saved状态冒充登录有效。体验问题报告已从待实施更新为“完成模拟验收、待用户最终联调”。
+
+[2026-09-19] 采集2.0阶段4a：有限关联词与跨查询去重排序基础
+范围：新增modules/job_query_planner.py和tests/test_job_query_planner.py；精确修改modules/job_scraper.py。未新增页面开关，未自动把建议词投入真实采集。
+改动：岗位族与JD词条仅生成最多4个可解释建议；未知岗位不生成关联词。采集结果按来源岗位ID去重，无ID时按来源、标题、公司、城市去重；主岗位命中优先，关联查询结果增加relation_type与relevance_score并稳定排序。
+备份：backups/modules/job_scraper_20260919_184953927.py.bak、backups/Codex工作日志_20260919_184953961.txt.bak；新增文件无旧版本。
+验证：Python编译通过；规划、去重、城市隔离浏览器专项17项通过；全量199项通过。覆盖建议上限、生成理由、未知岗位不杜撰、跨关键词重复、无岗位ID重复与主岗位优先。服务已重启。
+边界：本批只是后端安全基础，扩展建议尚未展示或启用。下一批提供预览和用户勾选，只有明确选择的词才允许进入采集。未访问真实招聘网站、未修改数据库或用户岗位数据。
+[2026-09-19] 采集2.0阶段4b：关联岗位预览、确认与采集接入
+范围：routers/jobs.py、services/job_collection.py、frontend/src/components/JobMarket.jsx、两项既有测试；新增tests/test_job_related_queries_service.py。未修改真实站点选择器、登录会话、数据库结构或用户数据。
+改动：新增POST /api/jobs/queries/preview；前端提供默认折叠的关联岗位扩展区，可选粘贴JD，展示最多4个带理由的候选；候选默认不选，只有用户勾选的词才随采集请求提交。后端再次校验JSON列表、数量、文本长度、重复项和主岗位重复；采集器使用确认后的精确关键词列表。岗位卡片区分主岗位与关联岗位。
+备份：backups目录20260919_185550批次包含两项生产Python、JobMarket.jsx和两项既有测试；日志于20260919_190405备份。
+验证：Python编译通过；关联词与路由专项11项通过；前端lint和生产构建通过（仅保留既有AIAssistant.jsx rejectResume未使用警告）；真实Edge模拟浏览器验证折叠、JD建议、用户勾选、multipart提交、主/关联标签及采集成功/失败状态，pageerror与console error均为0；全量202项通过。服务重启为PID 25764；预览接口200，超过4项400，首页、新JS及CSS均200。
+边界：未访问真实招聘网站、未运行真实采集，也未调用真实AI。岗位扩展仍是有限规则建议，不等于语义向量检索；真实站点支持仍需后续统一验收。
+[2026-09-19] 采集2.0阶段5a：岗位采集任务持久化与重启恢复
+范围：新增modules/job_collection_tasks.py与tests/test_job_collection_tasks.py；修改modules/db_client.py、services/job_collection.py、routers/jobs.py、app.py、JobMarket.jsx及两项既有测试。未修改真实站点选择器、登录凭据、岗位数据或用户简历。
+改动：每次采集创建JOB任务编号，阶段、进度、岗位数、请求摘要、结果和失败原因写入SQLite；状态接口支持按task_id精确查询；前端把任务编号保存到localStorage并在刷新后恢复轮询。服务重启会把遗留queued/running任务标为interrupted并提示重新启动，不冒充任务仍在运行。浏览器关闭异常不再阻止最终任务状态落库。
+备份：backups目录20260919_190853批次包含7项既有源码/测试；日志于20260919_191546备份。新增任务仓库和测试无旧版本。
+验证：Python编译通过；任务、数据库、路由、来源与城市专项26项通过；前端lint/build通过（仅保留既有rejectResume警告）；真实Edge模拟刷新恢复、成功和失败路径通过，pageerror/console error均为0；全量204项通过。服务重启为PID 28576；状态接口200、未知任务404、job_collection_tasks真实表存在、首页及新JS/CSS均200。
+边界：未启动真实岗位采集。当前实现可靠记录“服务重启导致的中断”，尚未提供运行中主动取消或跨线程强制超时；Python线程不可安全强杀，后续需通过分阶段取消标记与浏览器关闭协作实现。
+清理：尝试按规则清理__pycache__时命令被执行策略拦截，未删除任何文件；没有生成临时修复脚本，未改动现有缓存或用户文件。
+[2026-09-19] 采集2.0阶段5b：协作式取消与10分钟超时保护
+范围：modules/db_client.py、modules/job_collection_tasks.py、modules/job_scraper.py、services/job_collection.py、routers/jobs.py、frontend/src/components/JobMarket.jsx及相关测试。未改真实站点选择器、登录凭据或岗位数据。
+改动：采集任务增加cancel_requested与deadline_at；用户确认后可请求停止，采集器在来源、关键词、翻页、滚动和卡片处理节点协作中止；超过10分钟后记录timed_out，用户取消记录cancelled，不伪装成普通失败。运行中前端显示阶段百分比和“停止采集”按钮。
+备份：backups目录20260919_234142批次包含生产源码与主要测试；路由测试于20260919_234428补充备份；日志于20260919_234921669备份。
+验证：Python编译通过；前端lint与生产构建通过（仅保留既有AIAssistant.jsx rejectResume未使用警告）；浏览器模拟取消、刷新恢复、失败收尾通过，pageerror与console error均为0；全量209项通过。服务重启为PID 26120；状态接口200、未知任务取消404、首页及本地JS/CSS均200，新数据库列存在。
+边界：本批未访问真实招聘站点。Python线程不做强制终止；若Playwright正在等待单次页面导航，停止会在该步骤返回后生效，现有导航上限约30秒。
+[2026-09-19] 采集2.0阶段6a：BOSS直聘合规人工辅助接入
+请求与范围：评估BOSS直聘爬虫可行性，网页无法采集时尝试其他办法。根据BOSS官方协议，未实施未经许可的爬虫、拟人或技术措施规避，改为官方页面人工辅助交接。
+修改：modules/job_sources.py新增boss来源能力与官方入口交接数据；routers/jobs.py新增POST /api/jobs/sources/search-handoff；JobMarket.jsx新增默认折叠的BOSS官方搜索区；JobSessions.jsx将来源正确标记为“人工辅助搜索”；补充后端与浏览器测试。
+备份：backups中20260919_235314、235516、235544及235725批次，覆盖五项源码/测试、JobSessions.jsx、其UI测试、路线报告与工作日志。
+验证：Python编译通过；来源与交接专项9项通过；前端lint/build通过（仅保留既有rejectResume警告）；真实Edge模拟验证生成入口、搜索词、广州官方链接和来源状态，pageerror/console error均0；全量211项通过。服务重启为PID 25376；来源接口和广州交接均200，非人工辅助来源请求返400，新JS/CSS均200。
+当前效果：用户填好目标岗位和城市后，可生成BOSS官方入口与搜索词并手动查看；广州使用已核实的官方城市页，其他城市暂回到官网首页并明确提示手动选城。
+边界与下一步：本批未访问BOSS岗位页、未读取登录态、未转存岗位数据。下一批实现用户主动粘贴岗位链接/正文后的结构化导入，再进入OfferForge去重、匹配和保存流程。
+[2026-09-20] Browser Use官方仓库下载与隔离安装
+请求与范围：查看GitHub上browser-use用法并下载。仅在external/browser-use中安装官方源码与独立虚拟环境，未修改OfferForge源码、requirements.txt或主虚拟环境。
+执行：安装uv 0.12.17；浅克隆https://github.com/browser-use/browser-use.git到D:\AI_ONE\external\browser-use，提交d8110c5；使用Python 3.12.8在仓库内创建.venv并安装browser-use 0.13.10、browser-harness 0.1.13与Windows core依赖。
+验证：Agent、Browser、ChatOpenAI导入成功；安装包版本通过importlib.metadata确认；外部仓库git status干净。doctor确认Windows 11、Python 3.12.8、Chrome正在运行，但尚未建立浏览器连接。
+待用户操作：在Chrome打开chrome://inspect/#remote-debugging并勾选“Allow remote debugging for this browser instance”，然后重跑page_info()连接验收。未配置API Key，未运行AI浏览器任务，未访问任何招聘网站。
+备份：本批仅新增external/browser-use及独立.venv，无旧文件需备份；日志于20260920_011200/011201备份。
+[2026-09-20] Browser Use 本地 Edge 完整配置与验收
+用户需求：纠正默认浏览器为 Edge，并把 Browser Use 配置为本机可重复使用的工具。
+范围：仅修改 D:\AI_ONE\external\browser-use 下的本地启动入口；复用项目既有 DeepSeek 密钥，不读取或记录密钥正文，不改 OfferForge 业务代码。
+新增：local_edge_agent.py、启动BrowserUse-Edge.bat；创建桌面快捷方式 C:\Users\MR\Desktop\Browser Use Edge.lnk。
+实现：使用 channel=msedge 和独立用户目录 .browser-use-edge-local-profile；本地 CDP 地址加入 NO_PROXY；关闭匿名遥测；复用 D:\AI_ONE\.env 的 DEEPSEEK_API_KEY；限制最大步数和失败次数；支付、投递、发消息、删除和账号修改必须等待用户明确确认。
+兼容修正：关闭任务文本的自动 URL 截取，避免中文说明被并入网址；DeepSeek 改为在系统提示中接收 Schema，不强制使用其当前不支持的 response_format。
+验证：Python py_compile 通过；Edge 启动/关闭通过；真实只读任务打开 https://example.com，2 步返回“Example Domain”，退出码 0；桌面快捷方式目标与工作目录核验正确。
+备份：backups\external\browser-use\启动BrowserUse-Edge_20260920_*.bat.bak、backups\external\browser-use\local_edge_agent_20260920_*.py.bak，以及本条日志修改前备份。
+边界：当前只证明本地 Edge + DeepSeek + Browser Use 的完整基础链路可用；招聘网站登录、反爬与长期稳定性仍需按网站分别验收。
+[2026-09-20] Browser Use部署进OfferForge岗位采集流程
+需求：保留51job传统采集器，将Browser Use作为复杂网站采集适配器接入项目并补齐首批安全与产品链路。
+改动：新增modules/browser_use_job_collector.py；修改modules/job_sources.py、modules/job_scraper.py、services/job_collection.py、JobMarket.jsx、JobSessions.jsx；新增采集器测试并更新来源测试与验收路线。
+实现：猎聘注册为browser_use_beta；前端支持51job、猎聘测试版、合并去重三种选择；任务层分流传统采集和智能浏览器；Agent使用隔离Edge与既有DeepSeek配置，限定城市、关键词、最多20条、来源域名，并禁止登录、绕验证码、投递、发消息或账号修改；结果经必填字段、城市、域名、链接、去重和稳定job_id校验后才进入现有SQLite与JD评分流程；超时/取消终止工作进程树。
+验证：Python编译通过；专项13/13；完整后端215/215；前端lint和Vite构建通过（仅保留原有AIAssistant未使用变量警告）；真实运行服务已重启，API、首页、最新JS/CSS均200，来源接口正确返回browser_use_beta/not_verified。
+真实站点：第一次猎聘任务完成广州选择和搜索，在清理额外筛选时240秒超时；修正为城市码直达后能进入广州结果页并识别岗位卡片，但页面出现广州已选、可见卡片跨城的回退，系统未保存错误城市结果；随后DeepSeek返回402 Insufficient Balance，验收中断。当前不能称猎聘稳定可用。
+备份：本批所有既有源码、前端、测试、报告和日志均已写入D:\AI_ONE\backups对应目录，新文件创建前无旧版可备份。
+范围外观察：AIAssistant.jsx存在原有未使用变量rejectResume警告，本批未修改。
+[2026-09-20] Browser Use采集进度阶段与可识别错误收口
+需求与范围：在暂不补充模型API余额的前提下，继续完成不依赖真实模型调用的P0收口；本批不改前端布局、不访问真实招聘网站、不消耗API余额。
+修改：modules/browser_use_job_collector.py增加可机器识别的BrowserUseCollectionError、工作进程progress.json和浏览器启动/导航/采集/整理/校验阶段回调；区分余额不足、限流、需验证码、需登录、访问受限、进程失败、超时、空结果和城市错位等错误。services/job_collection.py将阶段和百分比写入既有任务状态，并保留确切错误码。tests/test_browser_use_job_collector.py增加错误分类、错误码保留、进度回调与跨城市拦截测试。
+用户效果：仍使用现有采集进度条和状态文案，无需新增臃肿界面；当后续真实猎聘验收恢复时，用户可看到正在启动浏览器、打开网站、智能采集、整理结果或校验岗位，失败时也能区分余额、登录、验证码、超时和跨城市问题。
+备份：backups中20260920_024210批次包含Browser Use采集器、采集服务和专项测试；日志修改前备份为backups/logs/Codex工作日志_20260920_024635312.txt.bak。
+验证：Python编译通过；Browser Use专项7/7通过；完整后端回归218/218通过。后端重启为PID 15892，绕过本机代理后/api/status、/api/jobs/sources和首页均返200。
+排查边界：将停止、启动和验收串在同一PowerShell命令时被执行策略拦截，拆开后正常；Invoke-WebRequest经本机代理检查localhost产生502假异常，curl --noproxy直连确认服务实际正常。
+未完成边界：真实猎聘端到端验收仍被DeepSeek余额不足阻断，不将模拟测试或局部真实页面访问称为稳定可用。
+[2026-09-20] Browser Use采集调度集成测试补齐
+范围：新增tests/test_browser_use_collection_integration.py，本批不修改产品代码、不访问真实招聘网站、不消耗模型API余额。
+覆盖：模拟Browser Use工作进程正在运行时发出取消，验证所属进程被终止且返回USER_CANCELLED；模拟超过截止时间，验证进程清理且返回BROWSER_TIMEOUT；模拟51job与猎聘同批采集，验证各来源内部重复项被去除、两个来源均保留并写入临时SQLite，任务最终为completed。
+验证：新增集成测试3/3通过；完整后端回归221/221通过。本批无产品代码改动，现有PID 15892后端无需重启。
+备份：新测试文件无旧版；路线报告与日志修改前备份在backups/reports和backups/logs的20260920_031018354批次。
+边界：当前证明调度、清理、合并去重和入库合同正常，仍不代表猎聘真实页面可稳定采集。
+[2026-09-20] 猎聘确定性岗位卡片提取与AI后备路由
+目标：降低Browser Use重复观察同一页面造成的耗时和模型成本，但不删除AI浏览器对页面变化的后备能力。
+修改：modules/browser_use_job_collector.py新增CDP固定DOM提取器，搜索页打开后先读取岗位链接、标题、公司、城市、薪资和标签；固定规则结果仍经过来源域名、目标城市、必填字段、数量和去重校验。有合格结果时直接返回，不创建模型客户端；没有合格结果时才切换现有AI Agent。新增browser_extracting进度阶段。
+测试：补充CDP返回值提取测试；Browser Use专项与集成测试11/11通过；完整后端回归222/222通过；主Python和Browser Use独立Python编译均通过。
+运行：后端已重启为PID 28736，/api/status、/api/jobs/sources和首页均返200。
+备份：生产采集器与单元测试修改前备份为20260920_031951749批次；路线报告与日志备份为20260920_032223506批次。
+边界：固定提取规则属于对当前页面结构的适配，不保证猎聘改版后永久有效；本批未消耗API余额，也未用真实猎聘结果宣称验收通过。
+
+[2026-09-20] 记忆库 Phase 2 增量整合
+范围：仅修改C:\Users\MR\.codex\memories\MEMORY.md与memory_summary.md；未修改OfferForge产品代码、配置、依赖或用户数据。
+改动：整合新增的Browser Use进展笔记，记录Liepin适配器已部署、`browser_use_beta`仍为`not_verified`、跨城市岗位拒绝与DeepSeek `402 Insufficient Balance`边界；摘要新增2026-09-20恢复入口。
+备份：C:\Users\MR\.codex\memories\backups\MEMORY_20260920_201959881.md.bak、C:\Users\MR\.codex\memories\backups\memory_summary_20260920_201959918.md.bak；本日志修改前备份为D:\AI_ONE\backups\Codex工作日志_20260920_202241169.txt.bak。
+验证：memory_summary.md首行保持v1；MEMORY.md引用的磁盘rollout summaries均存在；git diff --check通过。
+边界：未重新运行OfferForge测试或真实招聘网站验收；此条仅整理已有证据。
+
+[2026-09-24] OfferForge Vercel正式部署
+用户请求：将D:\AI_ONE中的OfferForge网站部署上线，并确认是否影响后端源码。
+部署方式：使用已登录的Vercel CLI直接上传当前工作区，创建jianzhouyun/offerforge项目；未提交或推送Git，未改动远程仓库。GitHub自动连接因Vercel账号未绑定GitHub而跳过，不影响本次直接部署。
+隐私边界：新增.vercelignore，排除.env、本地SQLite、简历、照片、日志、备份、报告、测试和Browser Use环境；这些本机数据未上传。
+兼容修改：config.py仅在VERCEL环境中把data、logs和resumes切换到/tmp/offerforge；本机仍使用D:\AI_ONE原目录，不改变本地后端数据和运行方式。.gitignore由Vercel CLI追加.vercel与.env*。
+验证：前端oxlint通过（保留既有rejectResume未使用警告），Vite生产构建通过；Python编译通过；完整后端222/222通过。Vercel生产部署dpl_8cFNZ3zatEzeMqktf2UWQzfNo1Ma状态Ready，FastAPI函数50.92MB，正式域名https://offerforge-lovat.vercel.app。
+线上边界：Vercel /tmp为临时空间，SQLite、上传文件和任务状态不持久；未将本机DEEPSEEK_API_KEY写入Vercel，因此AI能力尚未配置；本轮不宣称招聘站浏览器自动化和长期后台任务能在无状态云函数稳定运行。
+
+[2026-10-01] 记忆库 Phase 2 增量整合
+范围：仅修改C:\Users\MR\.codex\memories\MEMORY.md与memory_summary.md；未修改OfferForge产品代码、配置、依赖或用户数据。
+改动：新增OfferForge Vercel生产HTTP 500的运行时诊断记忆，明确`modules/jd_matcher.py`导入期OpenAI客户端与缺失云端凭据的边界；删除唯一支撑文件已移除的Windows磁盘/启动服务块；同步两份已归档rollout路径。
+备份：C:\Users\MR\.codex\memories\backups\MEMORY_20261001_234718146.md.bak、C:\Users\MR\.codex\memories\backups\memory_summary_20261001_234718179.md.bak；本日志修改前备份为D:\AI_ONE\backups\Codex工作日志_20261001_234718184.txt.bak。
+验证：memory_summary.md首行保持v1；MEMORY.md仅引用现存rollout summaries；已删除Windows summary没有残留引用；git diff --check通过。
+边界：本条仅整合既有证据；未应用或验证Vercel缺失凭据的代码修复，未重新运行OfferForge测试或真实站点验收。
+
+[2026-10-22] 记忆库 Phase 2 增量整合
+范围：仅修改C:\Users\MR\.codex\memories\MEMORY.md；未修改OfferForge产品代码、配置、依赖或用户数据。
+改动：将 Windows C盘清理 rollout 的两处 `rollout_path` 从 sessions 目录同步为 authoritative raw memory 和 rollout summary 中的 archived_sessions 目录；没有新增任务事实或偏好，memory_summary.md 无需改动。
+备份：C:\Users\MR\.codex\memories\backups\MEMORY_20261022_070731229.md.bak；本日志修改前备份为 D:\AI_ONE\backups\Codex工作日志_20261022_070731267.txt.bak。
+验证：memory_summary.md 首行仍为 v1；两处 handbook rollout 引用均使用 archived_sessions；所有三个 referenced rollout summaries 均存在；git diff --check 通过。
+边界：本条仅同步已提供的 provenance 路径；未重新运行 OfferForge 测试、真实招聘网站验收或 Windows 清理。
+
+[2026-11-23] OfferForge 2.0 第一批：AI客户端懒加载、超时保护与错误分类（修复Vercel无密钥500）
+请求与范围：用户确认执行第1步（作品仅作在线演示，严格按mr-safe-coding-workflow规则执行）。仅修改modules/deepseek_client.py与modules/jd_matcher.py，新增tests/test_ai_client_resilience.py；不改jd_analysis.py、前端组件、数据库结构或用户真实简历。
+备份：使用backup_file.ps1备份至backups/modules/deepseek_client_20261123_193958354.py.bak、backups/modules/jd_matcher_20261123_193958668.py.bak；日志追加前备份至backups/Codex工作日志_20261123_194222681.txt.bak（保留5份）。
+改动：deepseek_client.py新增DeepSeekCallError、resolve_deepseek_api_key、classify_deepseek_error（区分CONFIG_MISSING/INSUFFICIENT_BALANCE/RATE_LIMITED/AUTH_FAILED/TIMEOUT/UPSTREAM_ERROR）及带60秒默认超时的create_openai_client；jd_matcher.py移除导入期顶层OpenAI()强实例化，改为_LazyOpenAIClient懒加载代理，无缝兼容jd_analysis.py与既有Mock测试，并在匹配异常时返回明确error_code与中文提示。
+验证：3个Python文件py_compile通过且均为UTF-8无BOM；专项AI与JD测试13/13通过；模拟VERCEL=1且DEEPSEEK_API_KEY为空时import app与GET /api/status均返回200 OK；全量后端unittest 226/226全部通过。
+结果与观察：第1步圆满完成，无密钥在线演示启动崩溃根因已消除；未触碰未授权模块（既有AIAssistant.jsx的rejectResume警告留待已获批的第3步处理）。
+
+[2026-11-23] OfferForge 2.0 第二批（/learn 规则持久化 + 第 3 步收尾与保守清理）
+请求与范围：用户批准 /learn 提案与第 3 步。新建项目级自动加载规则文件 GEMINI.md；精确删除 frontend/src/components/AIAssistant.jsx 未使用的 rejectResume 声明（不拆分不重写）；完善 .gitignore 忽略本地 SQLite 数据库与备份；因累计完成两批代码改动（第 1 步 + 第 3 步），按规则 1 与规则 4 清理项目 6 个 __pycache__ 缓存目录。
+备份：使用 backup_file.ps1 备份至 backups/frontend/src/components/AIAssistant_20261123_195137706.jsx.bak、backups/_20261123_195138148.gitignore.bak；日志追加前备份至 backups/Codex工作日志_20261123_195350914.txt.bak（保留 5 份）。
+改动：新建 GEMINI.md（33 行，浓缩全局控制台.txt、全局复利踩坑日志.txt 与在线演示定位）；AIAssistant.jsx 删除第 397-401 行未引用函数（1258 -> 1252 行）；.gitignore 移除原 BOM 并追加 data/*.db、data/*.db-journal、backups/、*.bak、_tmp_*（45 -> 52 行）。
+验证：前端 oxlint 0 warnings / 0 errors；Vite 生产构建 530ms 通过（dist/assets/index-DFl4_on_.js 312.34kB、index-CPGgA3-k.css 2.87kB）；TestClient 实测首页 /、/api/status 与两项同源 /assets/ 静态资源均返回 HTTP 200；简历版本与优化契约测试 28/28 通过；git check-ignore 确认 data/offerforge.db 与 backups/ 已被忽略；3 个文件均为 UTF-8 无 BOM。
+清理：核验绝对路径均位于 d:\AI_ONE 后，删除根目录、core、modules、routers、services、tests 共 6 个 __pycache__，未触碰源码、data、logs、backups、resumes 或外部依赖。
+结果：/learn 规则落盘与第 3 步收尾圆满完成，改动计数器归零。
+
+[2026-11-23] 岗位采集2.0扩展：新增3个权威全行业开放源（国聘、国家24365、美团）与统一适配器框架
+请求与范围：用户确认开始实施拼图1首批3个权威全行业开放源（国聘iguopin、国家24365 ncss、美团meituan），并搭好可扩展适配器注册表以便后续大批量扩充官方源。不触碰简历解析、优化、模板和JD评分逻辑。
+备份：使用backup_file.ps1备份至backups/modules/job_sources_20261123_201934061.py.bak、backups/services/job_collection_20261123_201934630.py.bak、backups/frontend/src/components/JobMarket_20261123_*.jsx.bak、backups/tests/test_job_sources_20261123_202219884.py.bak；日志追加前备份至backups/Codex工作日志_20261123_202402521.txt.bak（保留5份）。
+改动：新增modules/official_job_sources.py（496行），建立OfficialJobAdapter基类与OFFICIAL_ADAPTERS注册表，内置IguopinAdapter、NcssAdapter、MeituanAdapter，统一绕过本机代理、12秒超时保护、协作式取消、HTML清洗、严格城市核验与跨页去重；modules/job_sources.py自动挂载3个official_http源（前3个既有源顺序不变）；services/job_collection.py新增official_http分流（纯开放源不启动浏览器）；JobMarket.jsx来源下拉框增加3个权威源及“全部权威开放源一键合采”选项；新增tests/test_official_job_sources.py（6项）。
+验证：Python文件py_compile通过且全部为UTF-8无BOM；专项15/15通过；全量后端unittest 232/232全部通过；前端oxlint 0 warnings / 0 errors，Vite生产构建431ms通过；首页/、/api/jobs/sources（6源）与最新/assets/静态资源均HTTP 200；真实3源只读小样本均成功返回实时岗位。
+边界与观察：国家24365部分岗位地区粒度为省份（如“广东”），国聘部分岗位标注“中国”，当前严格城市过滤仅保留明确包含目标城市名的岗位，后续可按需扩展“省→市”映射或“全国/省级可选保留”策略；实测中观察到美团部分关键词会返回热门技术岗，可后续结合本地关键词相关性排序优化。
+
+[2026-11-23] OfferForge 2.0 通用多引擎大模型架构升级（支持智谱/Gemini/硅基流动/阿里百炼/DeepSeek自由切换）
+请求与范围：用户拿到智谱 API Key 后授权将 OfferForge 升级为通用多引擎架构。仅修改 config.py、modules/deepseek_client.py、modules/jd_matcher.py、modules/jd_analysis.py 与 tests/test_ai_client_resilience.py；不触碰前端、爬虫适配器、数据库或真实 .env 密钥内容。
+备份：使用 backup_file.ps1 备份至 backups/config_20261123_231811196.py.bak、backups/modules/deepseek_client_20261123_231811509.py.bak、backups/modules/jd_matcher_20261123_231811812.py.bak、backups/modules/jd_analysis_20261123_231812115.py.bak、backups/tests/test_ai_client_resilience_20261123_231812417.py.bak；日志追加前备份至 backups/Codex工作日志_20261123_232140275.txt.bak（保留 5 份）。
+改动：config.py 新增 LLM_PROVIDER_PRESETS（内置 zhipu/gemini/siliconflow/aliyun/deepseek 预设）与通用环境变量；modules/deepseek_client.py 新增 resolve_llm_config() 与 get_active_llm_model()，按 LLM_PROVIDER 或 auto 顺序（zhipu->gemini->siliconflow->aliyun->deepseek）自动路由 base_url、model 与 api_key，保留 DeepSeekClient 类名向后兼容；modules/jd_matcher.py 与 modules/jd_analysis.py 消除硬编码 model="deepseek-chat"，改为动态读取 get_active_llm_model()，代理缓存键升级为 (api_key, base_url)。
+验证：5 个 Python 文件 py_compile 通过且均为 UTF-8 无 BOM；AI/JD 专项测试 14/14 通过；全量后端 unittest 233/233 全部通过。
+清理：累计完成两批代码改动（权威开放源接入 + 通用多引擎升级），按规则 1 与规则 4 清理项目 6 个 __pycache__ 缓存目录，未触碰源码、data、backups、日志或外部依赖。
+结果与观察：通用多引擎架构已就绪，用户将 ZHIPU_API_KEY 填入本地 .env 即可生效；modules/browser_use_job_collector.py 仍单独读取 DEEPSEEK_API_KEY，按板块隔离暂未修改，后续需要时再统一。
+
+[2026-11-24] 简历优化 70/30 真实润色规则升级 + 智谱 GLM-5 思考模式输出预算保护
+请求与范围：用户授权将简历优化规则调整为“70% 忠于原文核心事实 + 30% 合理润色与添砖加瓦”，并修复 glm-5.3-flash 思考模式吃光 max_tokens 导致空 JSON 的问题；随后在桌面子文件夹生成编号模拟简历执行 7 步多维评测。
+备份：使用 backup_file.ps1 备份了 config.py、resume_optimization_guard.py、resume_optimization.py、deepseek_client.py、jd_analysis.py、jd_matcher.py、test_ai_client_resilience.py 以及两份日志（均保留 5 份）。
+改动：config.py 智谱预设更新为实测可用的 glm-5.3-flash；resume_optimization_guard.py（PROMPT_VERSION 升级为 resume-grounded-70-30-v3）与 resume_optimization.py 放开 30% STAR 结构与专业术语润色空间同时守住核心事实与数字底线；deepseek_client.py 新增 build_chat_completion_kwargs 为智谱 glm-5.* 自动注入 effort="low" 与 max_tokens>=8192，并接入 jd_analysis.py 与 jd_matcher.py。
+验证：全部改动 Python 文件 py_compile 通过；专项测试 33/33 通过；glm-5.3-flash 真机连通返回“连通”。
+
+[2026-11-24] 精准优化假成功Bug修复、智谱GLM-5超时与重试保护、隔离演示目录开关
+请求与范围：基于7步多维评测发现的问题，用户确认修复并启动可视化隔离重跑。仅修改config.py、modules/deepseek_client.py、services/resume_precision.py、tests/test_ai_client_resilience.py。
+备份：使用backup_file.ps1备份至20261124_003300批次；日志追加前备份至backups/Codex工作日志_20261124_003441756.txt.bak（保留5份）。
+改动：modules/deepseek_client.py为智谱glm-5.*默认启用120s超时并显式设置OpenAI客户端max_retries=0（避免底层隐式3倍盲重试）；services/resume_precision.py优先使用数据库已存完整job.description（>=30字）再回退网页抓取，并在chat_json失败时诚实返回ok=False而非伪装ok=True；config.py支持OFFERFORGE_RUNTIME_DIR环境变量以便在独立端口启动完全隔离的可视化测试服务。
+验证：4个Python文件py_compile通过；AI、精准优化与简历优化专项测试22/22全部通过。
+
+[2026-11-24] 采集与批量JD打分解耦提速（受控并发 + 数量上限 + 同简历安全缓存复用）
+请求与范围：用户授权优先完成第2项（采集/精准优化与批量打分解耦提速）。仅修改services/job_collection.py、services/job_matching.py、tests/test_job_matching_storage.py；不触碰前端样式、简历解析与模板。
+备份：使用backup_file.ps1备份至backups/services/job_collection_20261124_013922567.py.bak、backups/services/job_matching_20261124_013922841.py.bak、backups/tests/test_job_matching_storage_20261124_013923117.py.bak；日志追加前备份至backups/Codex工作日志_20261124_014146157.txt.bak（保留5份）。
+改动：services/job_collection.py的_auto_batch_score改为4线程ThreadPoolExecutor受控并发并设Top 8自动评估上限（其余岗位完整保留不丢），评分输入纳入真实description[:400]；services/job_matching.py的batch_score_jobs_json新增严格同简历缓存复用（核对auto_scored、resume_name与scored_resume_file防跨简历串扰，命中直接秒返0次AI调用），未命中时默认Top 10受控4线程并发评估并完整保留其余岗位；tests/test_job_matching_storage.py新增缓存复用、跨简历重评与上限保留测试。
+验证：3个Python文件py_compile通过且均为UTF-8无BOM；采集/匹配/来源专项测试28/28全部通过（0.637s）。
+清理：累计完成两批代码改动（精准优化/超时修复 + 批量打分解耦提速），按规则1与规则4清理本项目6个__pycache__目录。
+结果：彻底消除23岗串行打分拖死采集10分钟与精准优化加载卡死5分钟的瓶颈。
+
+[2026-11-24] 岗位卡片原网页溯源链接、出处标签与可展开详情补齐
+请求与范围：用户授权先修第1项（补齐岗位卡片原网页溯源跳转、出处标签与可展开详情面板），随后用全新无获奖/无证书简历做可视化全局复测。仅修改frontend/src/components/JobMarket.jsx；未触碰AIAssistant.jsx或后端爬虫。
+备份：使用backup_file.ps1备份至backups/frontend/src/components/JobMarket_20261124_0148426*.jsx.bak；日志追加前备份至backups/Codex工作日志_20261124_015019973.txt.bak（保留5份）。
+改动：JobMarket.jsx新增sourceLabel出处映射（国聘网/国家24365/美团官方/51前程无忧/猎聘/BOSS直聘）、safeExternalUrl协议白名单（仅允许http/https防伪协议）与expandedJobKey状态；卡片新增出处徽章、匹配分徽章、「🔗 原网页」新窗口直达外链，以及可点击展开/收起的完整JD正文、AI匹配简评、标签与官方溯源链接详情面板。
+验证：前端oxlint 0 warnings / 0 errors；Vite生产构建225ms通过（最新资源index-WsxtTQBT.js）。
+
+
+[2026-11-24] 智谱默认模型切换至 glm-4.7（关思考直出）+ glm-5-turbo 自动兜底与全链路复测
+请求与范围：用户经 A/B 盲测确认授权，将智谱默认引擎切换为 glm-4.7（默认关闭思考提速），并接入 glm-5-turbo 作为 429 限流/超时/JSON 破损自动降级兜底，随后重跑 7 步全链路与前端模拟测试。仅修改 config.py、modules/deepseek_client.py、modules/jd_matcher.py、modules/jd_analysis.py、tests/test_ai_client_resilience.py。
+备份：使用 backup_file.ps1 备份 5 个源码/测试文件及 Codex工作日志.txt、全局复利踩坑日志.txt 至 backups/（均保留最近 5 份）。
+改动：config.py 将 zhipu 预设模型由 glm-5.3-flash 改为 glm-4.7 并新增 fallback_model=glm-5-turbo 与 LLM_FALLBACK_MODEL 配置；modules/deepseek_client.py 区分智谱强制思考模型（glm-5.1~5.4）与可关闭思考模型（glm-4.5/4.6/4.7/glm-5-turbo），默认对后者注入 thinking=disabled 并在 JSON 任务开启原生 response_format=json_object，新增 create_chat_completion_with_fallback 在 429/超时/长 JSON 破损时自动切 glm-5-turbo 重试一次；jd_matcher.py 与 jd_analysis.py 统一接入该兜底调用；tests/test_ai_client_resilience.py 扩充至 9 项回归测试。
+验证：5 文件 py_compile 通过且均为 UTF-8 无 BOM；AI/JD/匹配专项单测 19/19 通过，前端 Playwright 模拟测试 2/2 通过；隔离环境下全新生成 03 号简历（沈知行，无证书无兴趣）实测 7 步全链路总耗时 59.98s（解析 6.62s、70/30 优化 25.77s、双模板 0.01s、31 岗多源采集+Top 8 打分 16.08s、批量缓存 8ms、单 JD 匹配 6.27s、精准优化 5.21s），空板块零编造。
+清理：累计完成两批改动（JobMarket 溯源详情 + glm-4.7 引擎与兜底升级），按规则 1 与规则 4 清理项目内 __pycache__ 目录。
+结果：彻底解决 glm-5.3-flash 强制思考导致的长耗时与 90s 超时问题，全链路稳定压进 1 分钟以内。
+
+[2026-11-24] 路线 A（遗留缺陷清零与服务重启）+ 路线 B（阶段 B 一键多维全链路体检脚本固化）
+请求与范围：用户授权“AB一起做”。A：修复 AIAssistant.jsx Step 3 简历模板的 setTPhoto 未定义报错、更新 test_resume_versions.py 过时提示词版本号断言并重启 5000 端口本地服务；B：新建永久可复用的阶段 B 多维全链路体检脚本 scripts/e2e_health_check.py 及纯函数单元测试 tests/test_e2e_health_check_helpers.py。
+备份：使用 backup_file.ps1 备份 frontend/src/components/AIAssistant.jsx、tests/test_resume_versions.py 及 Codex工作日志.txt 至 backups/（保留最近 5 份）；新增脚本与单测文件无需备份。
+改动：AIAssistant.jsx 第 437 行移除不存在的 setTPhoto(null) 调用；test_resume_versions.py 第 390 行改用 RESUME_OPTIMIZATION_PROMPT_VERSION 动态断言；新增 scripts/e2e_health_check.py（自动递增编号并轮换 3 套不同格式/内容/留空板块模拟 .docx 简历，隔离运行 7 步后端真机测试并输出采集数量、来源、溯源 URL 率、标题精准度、薪资匹配率与打分分布，同步内置 Playwright 前端模拟与 dist 零报错核验，兼容 Windows msedge 通道）及 tests/test_e2e_health_check_helpers.py（4 项纯函数单测）。
+验证：前端 oxlint 0 warnings / 0 errors，Vite 构建 178ms（index-CwXaB-qV.js）；Python 编译全通，全量后端单测 238/238 全绿 + 新增体检助手单测 4/4（合计 242/242）；新脚本生成 04 号全新简历（陆承宇_无获奖无兴趣，分段排版）实测 7 步后端全绿（62s，24 岗溯源率 100%、精准度 62.5%、薪资匹配率 33.3%、批量缓存 7ms、精准优化 7.54s），前端 Playwright 核验通过（ui_tests=True, dist_zero_errors=True, page_errors=0）；重启后的 5000 端口服务实测 HOME/JS/STATUS 均 200。
+结果：本地单测与控制台报错全部清零，项目正式具备一键多维全链路体检能力。
+
+[2026-11-24] 阶段 C（一键在线演示模式）+ 多源岗位相关性排序过滤 + Vercel 部署准备
+请求与范围：用户授权“一起做”（阶段 C 前端一键加载演示数据 + 多源采集相关性排序过滤 + Vercel 线上发布验收）。
+备份：使用 backup_file.ps1 备份 modules/official_job_sources.py、services/job_collection.py、tests/test_official_job_sources.py、app.py、frontend/src/components/Navbar.jsx、AIAssistant.jsx、JobMarket.jsx 与 Codex工作日志.txt 至 backups/（均保留最近 5 份）；新建文件 services/demo_seed.py、routers/demo.py、tests/test_demo_seed.py 无需备份。
+改动：
+1）相关性排序与噪音过滤：modules/official_job_sources.py 新增 rank_and_filter_jobs_by_relevance（支持多行业同义词与主关键词置顶、弱相关噪音岗在足量时过滤，并规范 primary 标签），接入 services/job_collection.py 城市过滤后、自动 Top 8 打分前，使 AI 打分预算优先用于高相关岗位。
+2）一键在线演示模式：新建 services/demo_seed.py 与 routers/demo.py 并在 app.py 注册 POST /api/demo/load，幂等注入合成样板简历（林星河，含完整原始底稿快照）与 6 个带合法官方溯源链接及预计算匹配分（91~65分）的精选岗位，零 API Key 在本机与 Vercel /tmp 下均可即刻体验；前端 Navbar.jsx 与 AIAssistant.jsx 新增「✨ 一键演示数据」按钮及快捷跳转横幅，AIAssistant.jsx 与 JobMarket.jsx 监听 offerforge:demo-loaded 事件自动联动选中样板简历与 6 岗批次。
+验证：前端 oxlint 0 warnings / 0 errors，Vite 构建 176ms（index-C-rCLhh8.js）；Python 编译全通，全量后端单测 245/245 全绿；Playwright 前端核验通过（ui_tests=True, dist_zero_errors=True, page_errors=0）；重启后的 5000 端口服务实测 HOME=200、JS=200、POST /api/demo/load 返回 ok=true（林星河 + 6 岗）。
+清理：累计完成两批改动（路线 A+B + 阶段 C 与相关性过滤），按规则 1 与规则 4 清理项目内 __pycache__ 目录。
+线上阻塞：执行 npx vercel --prod --yes 返回 Missing authentication token（当前终端未登录 Vercel CLI），待用户登录 Vercel 或确认通过 GitHub 触发部署后再做线上验收。
+
+[2026-11-24] 按用户要求移除一键加载演示数据模块（保留相关性排序与全部提速成果）
+请求与范围：用户明确要求删除一键加载演示数据模块、暂不推 Vercel 上线，转向讨论后续产品升级（用户登录、高端前端重构、多源高精准全国城市采集、PC/安卓多端形态）。
+备份：回退前使用 backup_file.ps1 备份 app.py、Navbar.jsx、AIAssistant.jsx、JobMarket.jsx 与 Codex工作日志.txt 至 backups/（保留最近 5 份）。
+改动：移除 app.py 中的 demo_router 注册、Navbar.jsx / AIAssistant.jsx / JobMarket.jsx 中的一键演示按钮与事件监听；删除新建的 services/demo_seed.py、routers/demo.py、tests/test_demo_seed.py；完整保留岗位相关性排序过滤、glm-4.7 + glm-5-turbo 兜底、卡片溯源与阶段 B 一键体检脚本。
+验证：前端 oxlint 0 warnings / 0 errors，Vite 构建 232ms（index-CwXaB-qV.js）；Python 编译与全量后端单测通过；本地 5000 端口服务已重启同步。
+
+[2026-11-24] 前端 3.0 专业工作台重构（shadcn/ui + Linear 双主题 + 桌面/移动端响应式骨架）
+请求与范围：用户授权按“浅色商务 + 石墨暗色双主题 + 专业桌面工作台 + 移动端自适应”方案重构前端界面，先做整包快照备份以支持秒级回滚。仅修改 frontend/index.html、frontend/src/index.css、frontend/src/App.jsx、frontend/src/components/AIAssistant.jsx、JobMarket.jsx、JobSessions.jsx；未动后端逻辑与 API 契约。
+备份：新建整包物理快照 backups/frontend_v2_snapshot_20261124.zip（64.7KB），并对全部 6 个前端源码文件及 Codex工作日志.txt 通过 backup_file.ps1 逐一备份（保留最近 5 份）。
+改动：
+1）frontend/index.html 移除 Spline/Three.js/Vanta 3D 地球与阻塞性 Google Fonts 外链，页面标题更新为 OfferForge — AI 求职工作台并加入防闪烁主题预加载脚本。
+2）frontend/src/index.css 建立完整双主题设计变量体系（light 浅色商务办公风 + dark 石墨暗色极客风，彻底去除荧光青/紫霓虹外发光），内置 Web/PC 左侧固定导航栏（252px）、顶部面包屑与主题切换条、左右分屏画布（.of-split-studio）及 <960px 移动端底部导航栏（.of-mobile-nav）。
+3）frontend/src/App.jsx 去除个人作品集首页外壳，直接渲染全屏 OfferForge Studio 工作台并持久化主题选择。
+4）AIAssistant.jsx 接入 lucide-react 线框图标与分组导航，Step 3 升级为左侧配置 + 右侧实时 A4 预览画布的分屏工作室；AIAssistant.jsx、JobMarket.jsx、JobSessions.jsx 全面替换旧版硬编码暗色与荧光色为双主题语义 CSS 变量。
+验证：前端 oxlint 0 warnings / 0 errors，Vite 构建 504ms（index-9ag3W4bm.js / index-CUoETmxF.css）；Playwright 前端回归与零报错核验通过；实机截取浅色工作台、分屏模板画布、石墨暗色岗位采集与 390x844 手机端 4 张预览图，page_errors=0。
+
+[2026-11-24] 前端 3.0 色彩层次精修（商业蓝/靛蓝/青绿分组色系 + 柔雾画布层次）
+请求与范围：用户反馈浅色界面偏素偏白，要求加入更丰富的色彩元素。仅修改 frontend/src/index.css、frontend/src/components/AIAssistant.jsx 与 JobMarket.jsx。
+备份：改前使用 backup_file.ps1 备份 index.css、AIAssistant.jsx 与 Codex工作日志.txt（保留最近 5 份）。
+改动：浅色底板升级为柔雾冷灰蓝（#eef2f7）叠加顶部淡蓝紫氛围光晕，使白色卡片具备清晰立体层次；侧边栏改为淡灰蓝底（#f6f8fc）并按「简历中心（蓝）/ 岗位与匹配（靛紫）/ 投递执行（青绿）」增加分组色点与激活态彩色图标块；主按钮升级为商业蓝-靛蓝渐变（--accent-gradient），同时保持 --accent 为纯色以兼容所有文字与左边框；页眉升级为带彩色图标方块的卡片标题栏 + Step 进度胶囊；左下角 AI 引擎卡片改用柔和薄荷绿就绪态。
+验证：前端 oxlint 0 warnings / 0 errors，Vite 构建 545ms（index-DvQAMana.css / index-CAa3PyL4.js）；实机 4 张预览图全部零报错刷新。
+
+[2026-11-24] 扩充 3 个免登录大厂官方招聘源（3→6 源）+ 分类可视化多选来源面板 + 全局“DeepSeek→AI”统一
+请求与范围：用户批准 /plan 计划：扩充官方采集源、重构图 1 岗位采集来源下拉栏为分类可视化筛选、将全局面向用户的 DeepSeek 字样改为 AI。
+备份：改前使用 backup_file.ps1 备份 12 个前后端与测试文件及 Codex工作日志.txt 至 backups/（均保留最近 5 份）。
+改动：
+1）modules/official_job_sources.py 新增 TencentAdapter（腾讯官方）、NetEaseAdapter（网易官方）、JdAdapter（京东官方）及 OfficialSourceMeta.category 分类元数据，OFFICIAL_ADAPTERS 由 3 源扩至 6 源；modules/job_sources.py 同步透出 9 源能力与 category 字段；services/job_collection.py 在 4+ 源合采时动态调节单源上限为 10 条以控总耗时。
+2）frontend/src/components/JobMarket.jsx 移除原生 <select id="job-collection-source">，重构为「4 套快捷组合预设 + 4 项分类筛选标签 + 自由多选可视化卡片网格 + 实时队列汇总」面板（默认勾选全部 6 个免登录官方源），并补全腾讯/网易/京东出处徽章映射。
+3）全局面向用户文案清理：AIAssistant.jsx（正在调用AI引擎）、core/runtime_state.py（AI 智能优化）、modules/browser_use_job_collector.py（AI API余额不足...）、Projects.jsx 与 Strengths.jsx 全部替换为 AI/AI大模型；同步更新 tests/test_browser_use_job_collector.py、tests/test_job_sources.py、tests/test_official_job_sources.py。
+验证：前端 oxlint 0 warnings / 0 errors，Vite 构建 697ms（index-CYmTcx_t.js）；Python 编译全通，来源/采集专项单测 25/25 通过（0.092s），Playwright 前端核验通过（ui_tests=True, dist_zero_errors=True, page_errors=0）；实机无代理测试 6 个官方源 2.06s 全部拉取成功（国聘 6、24365 5、美团 6、腾讯 6、网易 6、京东 6）；前端+运行态面向用户 DeepSeek 残留扫描为 0；重启 5000 端口并截取浅色/暗色新来源面板实机预览图写入 walkthrough.md。
+清理：累计完成两批改动（前端色彩精修 + 6 源扩充与面板重构），按规则 1 与规则 4 清理项目内 __pycache__ 目录。
+
+[2026-11-24] 全网 15 源并发直采矩阵（国资委/24365/国聘/牛客/11家企业官网）+ 8 大类开关卡片与微信推文 AI 拆解
+请求与范围：用户分析求职方舟后授权“确认开干”：新增国务院国资委、牛客招聘、百度、米哈游与北森 5 家跨行业龙头（科大讯飞、药明康德、迈瑞医疗、蒙牛、vivo）使免登录官方源扩至 15 个；将 11 家企业官网聚合为单一「企业官网」开关卡配副标题侧写与折叠子选，新增悬停优缺点提示与微信公众号推文 AI 拆解入库接口。
+备份：改前使用 backup_file.ps1 备份 official_job_sources.py、job_sources.py、job_collection.py、routers/jobs.py、JobMarket.jsx、test_official_job_sources.py、test_job_sources.py 及 Codex工作日志.txt 至 backups/（均保留最近 5 份）。
+改动：
+1）modules/official_job_sources.py 新增 SasacAdapter（国资委）、NowcoderAdapter（牛客带真实薪资）、BaiduAdapter、MihoyoAdapter 与通用 BeisenZhiyeAdapter（讯飞/药明/迈瑞/蒙牛/vivo），OFFICIAL_ADAPTERS 扩至 15 个免登录直连源。
+2）modules/job_sources.py 新增智联招聘官方辅助入口，总注册源 19 个；services/job_collection.py 升级多源采集为 6 线程 ThreadPoolExecutor 并发拉取，放行国资委“全国”央企公告，并新增 parse_wechat_recruitment_post；routers/jobs.py 暴露 POST /api/jobs/wechat/parse。
+3）frontend/src/components/JobMarket.jsx 重构为 8 大类精简开关卡片（国务院国资委、中国人社/24365、企业官网11家聚合+副标题侧写与折叠子选、微信公众号推文AI拆解、国聘网、牛客招聘、51前程无忧、猎聘网），全卡支持悬停优缺点提示并补全 20 源出处徽章。
+验证：前端 oxlint 0 warnings / 0 errors，Vite 构建 527ms（index-C7paBllu.js）；Python 编译全通，全量后端单测 245/245 全绿；Playwright 前端回归 ui_tests=True / dist_zero_errors=True / page_errors=0；实机 15 源 6 线程并发测试 1.90s 全部 15/15 成功抓回 46 个真实岗位（含牛客字节跳动 25-60K·15薪、国资委央企公告、腾讯/百度/京东/网易/讯飞等）；重启 5000 端口并刷新 walkthrough.md 实机截图。
+
+## 2026-11-24 全源采集稳定性修复 + 全随机多场景压力复测
+- **修改文件（改前均已留存 5 份滚动备份）**：
+  1. `modules/official_job_sources.py`：新增 70+ 全国主要城市 GB/T 2260 行政区划与省份映射表（`CITY_GEO_TABLE`），为 `iguopin`（`district`）、`ncss`（`areaCode` + 同省标注）、`jd`（`workCityJson` 2位省码 + 同省标注）、`nowcoder`（`jobCity`）、`baidu`（`城市+关键词` + 兜底）全面打通服务端城市参数；修复 `MeituanAdapter` 误用单数 `"keyword"` 导致搜索词不生效问题（改为 `"keywords"` 并扩大 `pageSize=40`）；新增 `official_location_matches_city()` 兼容多城市拼接与省·市格式；在 `rank_and_filter_jobs_by_relevance()` 中保底保留最多 4 条 `sasac` 国务院国资委官方公告（标注 `official_notice`）。
+  2. `services/job_collection.py`：解除旧版 51job 锚定正则 `scraper._city_matches` 对官方开放源（多城市/省·市格式）的误杀；落库并回传 `source_stats`、`source_raw_counts`、`target_city`、`salary_range`、`restrictions` 字段，提高多源单源上限至 8。
+  3. `frontend/src/components/JobMarket.jsx`：新增 `formatIntentSalaryRange()`，修复 `startScrape()` 未同步表单 `intent.salary_min/max` 而是发送旧简历薪资的 Bug；在岗位列表上方新增可点击筛选的「各渠道出岗统计」条。
+  4. `tests/test_official_job_sources.py`：新增服务端城市参数、省级兼容、美团 `keywords` 与国资委保底保留单元测试。
+- **验证结果**：
+  - `py_compile` 通过；`oxlint` 0 warnings / 0 errors；`vite build` 通过（`index-DcQZx26j.js`）。
+  - 全量后端单测 `246/246 OK`（43.15s）；Playwright 前端健康核验 `ui_tests=True | dist_zero_errors=True | page_errors=0`。
+  - **真随机三场景实采复测（Random Seed=79788，隔离临时库，避开用户原测试城市/薪资）**：
+    - 场景 1（苏州 · 数据分析师 · 5k-11k · 朝九晚六/双休）：3.90s，8 岗 / 2 渠道（国聘 4、国资委 4），城市/链接/薪资/条件 100% 校验通过。
+    - 场景 2（长沙 · 测试工程师 · 10k-14k · 年终奖透明/双休）：5.35s，17 岗 / 4 渠道（国家24365 8、国资委 4、国聘 3、牛客 2），全项 PASS。
+    - 场景 3（杭州 · 供应链管理 · 12k-16k · 五险一金/弹性打卡/拒绝纯电话销售/双休）：3.84s，24 岗 / 5 渠道（美团 8、国家24365 6、国资委 5、网易 3、国聘 2），全项 PASS。
+- **已记录暂未修改**：步骤 6「精准简历优化」覆盖简历后未真正写回 SQLite/前端刷新，且缺少覆盖后一键重新检测与原 JD 匹配度对比入口（按用户要求先待定，下一阶段专项修复）。
+- **保守清理**：已安全清理工作区 `__pycache__`（未触碰源码、`data/`、日志与备份）。
+
+## 2026-11-24 步骤 6「精准简历优化」覆盖写回数据库修复 + 覆盖后一键复测对比闭环
+- **修改文件（改前均已留存 5 份滚动备份）**：
+  1. `services/resume_precision.py`：完整读入简历工作/项目/实践/校园/科研经历，精准优化生成阶段即通过 `merge_grounded_optimization` 校验并输出完整 `optimized_resume`（做到“所见即所存”）；新增 `precision_recheck()` 支持用覆盖后最新简历并发重新评估所选目标 JD，输出覆盖前后分数变化、三维评分与新简评并同步回写 SQLite 岗位批次。
+  2. `services/resume_documents.py`：`overwrite_resume()` 支持 SQLite `resumes` 表兜底读取，落库时原子更新 SQLite + 版本表 + 磁盘 JSON；新增真实变更字段计算 `changed_fields` 与 `profile_summary` 返回值，杜绝 0 字段变更仍谎报覆盖成功。
+  3. `services/job_matching.py` & `routers/resume_actions.py`：给 `batch_score_jobs_json()` 加入简历正文 SHA-256 指纹与 `parsed_at` 校验，覆盖后自动失效旧分缓存；新增 `POST /api/resume/precision-recheck` 接口。
+  4. `frontend/src/components/AIAssistant.jsx`：修复步骤 6 过滤后索引偏移问题（使用真实 `_origIdx`）；覆盖时发送完整 `optimized_resume`；新增 `syncAfterResumeOverwrite()` 覆盖后同步刷新简历下拉表、步骤 1 简历详情、步骤 2 版本历史与步骤 3 模板缓存；新增覆盖后「🔍 重新检测匹配度（对比覆盖前后）」、「📄 查看已覆盖简历」按钮及「覆盖前 vs 覆盖后」可视化对比面板。
+  5. `tests/test_resume_precision_repository.py`：新增精准优化 → 覆盖写回 SQLite 验证 → 覆盖后复测对比 → 评分缓存失效端到端单测。
+- **验证结果**：
+  - `py_compile` 通过；`oxlint` 0 warnings / 0 errors；`vite build` 通过（`index-D7Zub3J-.js`）。
+  - 全量后端单测 `247/247 OK`（54.42s）；专项简历/版本/精准测试 `32/32 OK`（0.86s）；Playwright 前端健康核验 `ui_tests=True | dist_zero_errors=True | page_errors=0`。
+  - **真随机 + 真 LLM 端到端实测（Random Seed=84224，隔离临时库，场景：成都·零售数据分析→商业化增长数据分析师）**：
+    - 初评 `75分` → 精准优化 `6.11s`（护栏警告 0）→ 覆盖写回 SQLite `0.02s`（`/api/resumes/detail` 立即读出新正文）→ 覆盖后复测 `4.61s`，匹配分 **`75分 → 90分（+15分）`**（技能 95 / 经验 85 / 学历 90）。
+
+## 2026-11-24 浏览器会话级物理数据隔离 + 网络安全加固 + 一键启动端口脚本
+- **新增文件**：
+  1. `core/workspace_context.py`：基于 `ContextVar` 与 128-bit 随机 `HttpOnly Cookie (of_workspace_id)` 实现访客浏览器级物理隔间（`data/workspaces/<ws_id>/` 独立 SQLite 与简历/照片目录）及 14 天过期清理（`prune_stale_workspaces`）。
+  2. `core/security_middleware.py`：统一安全中间件，含响应安全头、公网演示口令锁（`OFFERFORGE_DEMO_TOKEN` + HMAC 签名 Cookie）、单 IP 滑动窗口防刷限流（`429`）、公网模式禁用本机桌面浏览器自动化路由（`OFFERFORGE_PUBLIC_MODE=1` 返回 `403`）及 `/api/auth/status|unlock|logout` 接口。
+  3. `start_server.bat`：双击一键启动后端服务端口（默认 `5000`，支持传参指定端口）。
+  4. `tests/test_workspace_isolation_and_security.py`：双浏览器物理隔离、公网口令锁、公网禁危险路由、单 IP 限流及 `chat_json` 尾逗号/破损重试单测。
+- **精准修补文件（21 份已有源码改前均已留存 5 份滚动备份）**：
+  - `app.py`、`core/api_responses.py`、`core/runtime_state.py`、`modules/db_client.py`、`modules/job_collection_tasks.py`、`modules/resume_optimization_tasks.py`、`modules/resume_parser.py`、`modules/job_scraper.py`、`modules/deepseek_client.py`（增强 `chat_json` 尾逗号修复与破损 JSON 自动低温度重试）、`routers/resumes.py`、`routers/resume_actions.py`（后台优化任务显式传递 ContextVar）、`routers/system.py`、`services/resume_documents.py`、`services/resume_optimization.py`、`services/resume_precision.py`、`services/resume_versions.py`、`services/job_collection.py`（工作区独立 `SCRAPER_STATUS` + 后台采集 `copy_context()` 传递 + 公网禁用 51job/猎聘）、`services/job_matching.py`、`services/delivery_service.py`、`frontend/src/App.jsx`（新增公网口令解锁屏与 `?token=` 链接自动解锁）。
+- **验证结果**：
+  - 22 份 Python 文件 `py_compile` 全过；`oxlint` 0 warnings / 0 errors；`vite build` 通过（`index-BJ_FM4K3.js`）。
+  - 全量后端单测 `250/250 OK`（44.99s）；Playwright 前端回归核验 `ui_tests=True | dist_zero_errors=True | page_errors=0`。
+  - 保守清理完成：已清理工作区 `__pycache__`，未触碰核心源码、`data/`、日志与备份。
+
+## 2026-11-24 OfferForge 3.0 产品宣传片（Remotion 4.x 独立工程 + 1080p MP4 成片）
+- **新增独立目录**：`d:\AI_ONE\promo-video\`（零改动主系统源码，板块完全隔离）。
+- **核心产出**：
+  - 8 幕动画组件（`src/scenes/Scene01Intro.tsx` ~ `Scene08Outro.tsx`）+ 公共动效框架（`src/components/SceneChrome.tsx`），完整覆盖 7 大步骤用法、15 大官方源、精准覆盖前后复测与浏览器级隐私隔离。
+  - 8 段同步中文配音（`public/audio/scene1.mp3` ~ `scene8.mp3`，`edge-tts zh-CN-YunxiNeural`）+ 定制柔和立体声环境配乐（`public/audio/bgm.wav`）+ 帧级时间轴（`src/timeline.json`）。
+  - 渲染成品：`d:\AI_ONE\promo-video\out\OfferForge_3.0_Promo.mp4`（1920×1080 @ 30fps, H.264, 2分03秒, 30.7 MB, 3711 帧全量编码通过）。
+- **验证**：`npx tsc --noEmit` 0 错误；4 幕关键帧 PNG 人工目检无文字裁切、无重叠错位；MP4 文件完整落盘。
+
+
+## [2026-11-26] 第一阶段·第 1 小步：岗位投递状态与面试备注持久化（SQLite 落库 + 重打分保留 + 物理隔离）
+- **背景与根因**：`frontend/src/components/JobMarket.jsx` 原先在加载批次时硬编码 `status: "all"`，导致顶部「📝 未投递 / ✅ 已投递 / 🔥 一面中 / ⏸ 不合适」标签筛选恒为空，刷新网页或重打分后无法记录真实求职投递进度与面试跟进信息。
+- **最小精确修补**：
+  1. `modules/job_repository.py`：新增 `VALID_TRACKING_STATUSES` 与 `update_job_tracking()`，校验 `batch_id`/`status`/`note`，支持按 `job_id` 与原始下标 `job_index` 双兜底定位岗位，更新 `status`、`tracking_note`、`tracked_at` 并经 `save_job_batch()` 写回当前会话 SQLite。
+  2. `routers/jobs.py`：新增 `JobTrackRequest` 与 `POST /api/jobs/track` 路由（走 `UnifiedAPIRoute` 统一错误码契约，不纳入 AI 限流池以便高频切换）。
+  3. `frontend/src/components/JobMarket.jsx`：移除 `status: "all"` 假状态，默认归一化为 `unsent`；顶部筛选栏实时统计各状态数量；每张岗位卡片新增彩色投递状态下拉胶囊、折叠态 `📌` 备注徽标与展开态「📌 跟进备注」回车/按钮保存栏（含乐观更新、失败回滚与 `✓ 已写入数据库` 提示）。
+  4. `tests/test_job_tracking.py`：新增隔离临时目录单元测试，覆盖仓库读写与下标回退、`batch_score_jobs_json(force_rescore=True)` 重打分保留跟进状态、参数安全校验及双浏览器 Cookie 工作区物理隔离。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-CY56G2Qh.js` / `index-DvQAMana.css`；`e2e_health_check.py --frontend-only` 通过（`ui_tests=True | dist_zero_errors=True | page_errors=0`）；本地模式全量单测 `253/253` 全绿通过。
+
+
+## [2026-11-26] 第一阶段·第 2 小步：步骤 4 / 步骤 5 一键直达步骤 6「🎯 精准优化」跨步骤联动
+- **背景与根因**：此前在步骤 4「岗位集市」或步骤 5「批量 JD 匹配」看到心仪岗位后，用户必须手动切到步骤 6、重新在下拉框找批次和简历、点「加载岗位」等待过滤、再手动取消其它勾选，链路冗长；且未评分岗位或低于 70 分的岗位在旧流程中容易被阈值过滤掉。
+- **最小精确修补（纯前端 2 文件，零后端风险）**：
+  1. `frontend/src/components/AIAssistant.jsx`：新增 `jumpToPrecisionOptimize({ batchId, resumeFile, job, jobIndex })`，一键切到步骤 6、自动回填批次与简历（支持回退到已有简历）、直接拉取 `GET /api/jobs/detail/{batchId}` 零等待定位目标岗位（按 `job_id` 与原始下标 `_origIdx` 双定位）、将目标岗位排到首位并仅勾选该岗位；同时在步骤 5 批量匹配列表中先保留 `_origIdx` 再过滤，每行新增「🎯 精准优化」直达按钮；步骤 6 对尚未评分岗位友好展示「待评」徽标。
+  2. `frontend/src/components/JobMarket.jsx`：接收 `onPrecisionOptimize` 回调，在步骤 4 每张岗位卡片右侧操作栏新增「🎯 精准优化」按钮，点击即可把当前批次、简历与精确岗位下标一键传入步骤 6。
+- **验证**：`oxlint` 0 警告 0 错误；`vite build` 产出 `index-DyycbsaP.js`；`e2e_health_check.py --frontend-only` 通过（`ui_tests=True | dist_zero_errors=True | page_errors=0`）；重启 5000 端口服务后绕过代理验证首页与静态资源均返回 `200`。
+
+
+## [2026-11-26] 第一阶段·第 3 小步：步骤 1 简历详情「✏️ 在线微调简历」与 SQLite/版本表原子落库（第一阶段收官）
+- **背景与目标**：此前解析后的简历只能只读查看或靠 AI 整体改写，用户无法直接修正错字、增删工作/项目经历或微调期望薪资与技能标签；同时为后续 PC 桌面端（.exe）与安卓端（APK/WebView/原生）提供标准 REST 接口与自适应响应式编辑表单。
+- **最小精确修补**：
+  1. `services/resume_documents.py`：新增 `update_resume_manual(resume_file, updates, db_path=None)`，校验标量字段、技能列表（自动去重清洗）及 6 类经历数组，保留 `original_profile` 原始解析底稿，并在单事务 + `os.replace` 原子替换中同步更新 SQLite `resumes`、`resume_versions`（新增 `manual-*` 当前版本且保留原稿）与兼容 JSON（异常时全量回滚）。
+  2. `routers/resumes.py`：新增 `ResumeManualUpdateRequest` 与 `PUT /api/resumes/{filename}` 标准接口（走 `UnifiedAPIRoute` 与会话工作区物理隔离，不占 AI 限流池）。
+  3. `frontend/src/components/AIAssistant.jsx`：在步骤 1 简历详情页记录 `resumeDetailFile`，新增「✏️ 在线微调简历」按钮与 PC/移动端自适应编辑表单（支持基本资料、技能标签、自我介绍、教育/工作/项目及个人实践/校园/科研经历增删改），保存成功后调用 `syncAfterResumeOverwrite()` 实时联动刷新列表、版本记录与模板预览。
+  4. `tests/test_resume_manual_edit.py`：新增隔离临时目录单元测试，覆盖 SQLite/版本表/JSON 原子写回、原始底稿保留、空姓名校验 `400 INVALID_INPUT` 及双浏览器 Cookie 工作区物理隔离。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-DUzKDTRQ.js`；本地模式全量单测 `255/255` 全绿；`e2e_health_check.py --frontend-only` 通过（`ui_tests=True | dist_zero_errors=True | page_errors=0`）。
+
+
+## [2026-11-26] 体验微调修复（问题 1 & 问题 2）：微调简历实时刷新质量警告 + 采集条件缺失项显眼提示
+- **问题 1（微调简历后旧质量警告未消除）**：在 `services/resume_documents.py` 的 `update_resume_manual()` 保存前接入 `modules.resume_schema._build_quality_warnings()`，自动清除已补全字段（姓名/联系方式/求职意向/技能）对应的旧 `MISSING_*` 警告并同步更新 `quality_status`（`complete` / `needs_review`）。
+- **问题 2（必填项未填时右侧提示隐身且不具体）**：修复 `frontend/src/components/JobMarket.jsx` 第 1121 行硬编码 `rgba(255,255,255,0.55)` 导致浅色模式下文字白底白字隐身的问题，改为主题感知语义色（错误/漏填红色 `var(--danger)`、确认成功绿色 `var(--success)`），并在 `confirmIntent()` 前端即时点名缺失必填项（`目标岗位` / `目标城市` / 薪资倒置）。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-CODxuQL4.js`；`tests.test_resume_manual_edit` 2/2 通过（含 `quality_warnings=[]` 与 `quality_status="complete"` 断言）；重启 5000 端口服务并验证静态资源 `200`。
+
+
+## [2026-11-26] 体验微调修复（问题 3 & 问题 4）：移除步骤 4 冗余会话管理面板 + 修复 CollectionStopped 传参崩溃
+- **问题 3（移除「网站会话管理」面板）**：按用户决策从 `frontend/src/components/JobMarket.jsx` 移除 `JobSessions` 导入与卡片渲染（后端会话代码保留不动，避免影响历史接口测试），并在 `tests/test_job_sessions_ui.py` 标注 `@unittest.skip` 说明面板已移除。
+- **问题 4（修复 `CollectionStopped.__init__()` 传参错误）**：将 `modules/job_scraper.py` 中 `CollectionStopped.__init__(self, reason)` 扩展为 `def __init__(self, reason, message=None)`，兼容 `services/job_collection.py` 传入 `(code, message)` 的调用点，避免官方源超时/取消时抛出英文 `TypeError`。
+- **验证**：`py_compile` 0 错误；`CollectionStopped` 单/双参数断言通过；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-Bc4ZsZBf.js`；`e2e_health_check.py --frontend-only` 通过（`ui_tests=True | dist_zero_errors=True | page_errors=0`）；重启 5000 端口服务并验证静态资源 `200`。
+
+
+## [2026-11-26] 紧急根因修复：多源并发线程池丢失工作区 ContextVar 导致采集秒报“已由用户取消”
+- **根因**：在开启浏览器会话级物理隔离（`core/workspace_context.py`）后，`services/job_collection.py` 中 6 线程 `ThreadPoolExecutor` 未复制父线程 `contextvars.Context`，导致工作线程执行 `stop_check` -> `get_stop_reason(task_id)` 时读回根库 `data/offerforge.db` 找不到隔离库中的任务单，立刻返回 `"cancelled"` 终止整批采集。
+- **最小精确修补**：
+  1. `services/job_collection.py`：在 `_run_scrape_sync` 中显式绑定 `active_db_path = get_active_db_path()` 给 `scraper.stop_check = lambda: get_stop_reason(task_id, active_db_path)`，并对 `ThreadPoolExecutor` 每个任务用 `contextvars.copy_context().run` 透传完整工作区上下文。
+  2. `tests/test_workspace_scrape_context.py`：新增隔离工作区多源并发单测，验证工作线程不丢失 `workspace_id`、`stop_check` 稳定返回 `None` 且正常入库。
+- **验证**：`py_compile` 0 错误；`tests.test_workspace_scrape_context` + `tests.test_job_sources` 10/10 全部通过；重启 5000 端口服务并验证健康。
+
+
+## [2026-11-26] 第二阶段（求职竞争力升级）收官：限制条件「避坑红绿灯」+ AI 模拟面试官（高频追问 & STAR 答法）
+- **2.1 限制条件「避坑红绿灯」**：
+  1. `modules/restriction_checker.py`（新增）：构建纯确定性、零额外 Token、带原文片段溯源的底线核查引擎，覆盖双休/大小周、五险一金、外包/驻场、出差、加班/996、夜班、电销、远程/弹性、食宿补贴及通用“不接受XX”规则，输出 `green`/`yellow`/`red` 明细与统计汇总。
+  2. `routers/matching.py` & `services/job_matching.py`：`/api/jd/match` 支持可选 `restrictions` 表单字段并返回 `restriction_report`；`/api/jobs/batch-score-json` 自动读取批次采集时的 `restrictions`（也支持前端覆写）并为每条岗位附带红绿灯核查结果。
+- **2.2 AI 模拟面试官（高频追问 + STAR 参考答法）**：
+  1. `services/interview_prep.py`（新增）：基于当前最新简历 × 目标 JD（支持直接传 JD 文本或传步骤 6 批次+岗位下标）生成 5~6 道差异化面试追问、STAR 结构参考答法（严守事实护栏，缺指标用【请补充你的真实数据】占位）与高情商反问面试官清单（自动融入待确认底线）。
+  2. `routers/resume_actions.py` & `core/security_middleware.py`：新增 `POST /api/resume/interview-prep` 并纳入 `_AI_RATE_LIMITED_PATHS` 防公网刷接口。
+  3. `frontend/src/components/AIAssistant.jsx`：步骤 5 单岗/批量匹配新增底线输入框、红绿灯明细卡片与列表状态徽标；步骤 5 与步骤 6 双入口接入「🎤 生成模拟面试追问」按钮、可折叠 STAR 面板及一键复制清单。
+- **验证**：`tests/test_stage2_competitiveness.py` 新增 2 项隔离单测通过；全量后端单测 `258` 项（257 通过、1 项旧会话面板按约定跳过）；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-Gu_fM6pA.js`；`e2e_health_check.py --frontend-only` 通过（`ui_tests=True | dist_zero_errors=True | page_errors=0`）。
+
+
+## [2026-11-26] 导航重构优化：AI 模拟面试官升级为独立 Step 7，原「自动打招呼」顺延至 Step 8
+- **改动**：修改 `frontend/src/components/AIAssistant.jsx`，在左侧主导航与移动端底部导航的 Step 6「精准简历优化」后新增独立 **Step 7「AI 模拟面试官」**（支持直接选简历 + 从采集批次选岗位或粘贴任意 JD + 填写个人底线），原 Step 7「自动打招呼」顺延至 **Step 8**（顶部进度角标同步升级为 `Step 0x / 08`）；同时步骤 5 / 6 的「🎤 生成模拟面试追问」按钮升级为带参一键跳转至 Step 7 自动出题。
+- **验证**：`oxlint` 0 警告 0 错误；`vite build` 产出 `index-CSArOcVr.js`；`e2e_health_check.py --frontend-only` 通过（`ui_tests=True | dist_zero_errors=True | page_errors=0`）；重启 5000 端口并实测静态资源 `200`。
+
+
+## [2026-11-26] Step 7 AI 模拟面试官体验升级：示范标准口语答案 + 默认遮盖 / 点击揭晓盲答自测
+- **改动**：
+  1. `services/interview_prep.py`：在每道题输出结构中新增 `standard_answer`（150~250 字第一人称示范标准口语答案，严守事实护栏，缺失时由 `star_answer` 自动兜底拼接）。
+  2. `frontend/src/components/AIAssistant.jsx`：新增 `revealedAnswers` 状态，每道题默认仅展示题目与考察意图，标准答案 + STAR 拆解 + 追问区域默认遮盖并展示「👁 揭晓标准答案」按钮；揭晓后可单题「🙈 重新遮盖」，顶部新增「👁 全部揭晓答案 / 🙈 全部遮盖」总开关，一键复制清单同步包含示范标准口语答案。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-CEmYibd1.js`；`tests.test_stage2_competitiveness` 2/2 通过；重启 5000 端口并实测静态资源 `200`。
+
+
+## [2026-11-26] 三项重点体验与采集质量大升级：采集引擎扩词去噪 + Step 8 清理与开场白去 JSON + 12 套简历排版
+- **1. 岗位采集引擎深度升级**（`modules/official_job_sources.py`、`services/job_collection.py`、`frontend/src/components/JobMarket.jsx`、`tests/test_official_job_sources.py`）：
+  - 新增 `expand_search_keywords()` 自动为主关键词剥离泛化职级后缀并扩展高命中行业同义词（如「AI产品专员」-> `['AI产品专员', 'AI产品', 'AI产品经理']`）；
+  - 彻底移除 `rank_and_filter_jobs_by_relevance()` 中硬塞 4 条无关 `sasac` 公告及 0 分凑数后门，新增 `_GENERIC_ROLE_STOPWORDS` 过滤“专员/经理/助理”等泛化后缀误匹配；
+  - 前端默认采集预设移除 `sasac`（保留手动可选开关），实测「AI产品专员 @ 深圳」从原先含噪音 11 岗（有效 7 岗）跃升至 **32 个高相关真实 AI 产品岗**（覆盖腾讯/24365/国聘/美团/牛客/网易），无关航空/物流/会计岗彻底归零。
+- **2. Step 8 清理与开场白去 JSON 外壳**（`services/delivery_service.py`、`frontend/src/components/AIAssistant.jsx`）：
+  - 移除 Step 8 顶部过时的黄色「请自行登录招聘平台 / 打开51前程无忧」提示栏；
+  - 在 `generate_greeting()` 增加 Markdown 代码块与 `{"answer": ...}` JSON 外壳自动拆包清洗。
+- **3. 简历排版风格扩充至 12 套**（`services/resume_documents.py`、`frontend/src/components/AIAssistant.jsx`）：
+  - 后端新增 `finance`（投行金融）、`mint`（清新薄荷）、`gov`（国企沉稳）、`obsidian`（暗夜黑金）4 套独立打印友好 CSS，并在前端步骤 3 完整上线 12 套不同风格模板。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-DeDGYRw2.js`；12 套模板全部渲染 `200 OK`；开场白拆包断言通过；`tests.test_official_job_sources` 10/10 通过；`e2e_health_check.py --frontend-only` 通过（`ui_tests=True | dist_zero_errors=True | page_errors=0`）。
+
+
+## [2026-11-26] 步骤 4 体验精简与官方源薪资过滤补齐 + 切回本机模式
+- **改动**：
+  1. `services/job_collection.py`：在城市过滤与相关性筛选后补齐官方源统一薪资区间过滤（按用户期望薪资过滤超标明码薪资岗，同时保留大厂官网「面议」岗）。
+  2. `.env`：将 `OFFERFORGE_PUBLIC_MODE` 切回 `0`（本机模式），恢复本地 51job / 猎聘正常开启使用。
+  3. `frontend/src/components/JobMarket.jsx` & `tests/test_job_scrape_progress_ui.py`：删除「BOSS直聘官方搜索（人工辅助）」和「关联岗位扩展（可选）」两个冗余折叠框及未使用状态，使步骤 4 表单更清爽聚焦。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-vWNXB95Y.js`；`tests.test_job_scrape_progress_ui` + `tests.test_workspace_scrape_context` 2/2 通过；重启 5000 端口服务并实测静态资源 `200`。
+
+
+## [2026-11-26] PC 桌面端打包前 4 项收官升级：润色风格胶囊 + 4 合 1 投递文案中心 + Step 9 投递看板/CSV 导出 + 模型设置弹窗 & 百度源修复
+- **1. 步骤 2 润色风格胶囊**（`frontend/src/components/AIAssistant.jsx`）：新增「稳健通用 / 校招潜力版 / 大厂结果导向版」3 档风格，无损注入现有 70/30 事实护栏 Prompt。
+- **2. 步骤 8「投递文案中心」4 合 1**（`services/delivery_service.py`、`routers/deliveries.py`、`frontend/src/components/AIAssistant.jsx`）：扩展为「平台打招呼开场白 / 邮箱自荐信 Cover Letter / 高情商求内推话术 / 面试感谢与进度跟进」4 大场景 + 3 种语气风格。
+- **3. 新增 Step 9「📊 求职投递看板」+ Excel/CSV 导出**（`modules/job_repository.py`、`routers/jobs.py`、`frontend/src/components/AIAssistant.jsx`）：新增 `GET /api/jobs/tracking-board` 跨批次汇总总采集/已投递/一面中/转化率与状态清单，支持行内快捷改状态与一键导出 UTF-8 BOM CSV。
+- **4. 桌面端就绪收口**（`routers/system.py`、`modules/official_job_sources.py`、`frontend/src/components/AIAssistant.jsx`）：
+  - 新增 `GET/POST /api/system/llm-config`（仅限本机写入，脱敏展示密钥，即时生效并写入 `.env`）及顶部栏「⚙️ 模型设置」弹窗；
+  - 修复 `BaiduAdapter` `pageSize` 调整为 `"10"` 解决 `Illegal argument : pageSize`。
+- **验证**：`tests/test_pre_desktop_polish.py` 3/3 通过；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-DyWS0XwB.js`；`e2e_health_check.py --frontend-only` 通过（`ui_tests=True | dist_zero_errors=True | page_errors=0`）；重启 5000 端口并验证各接口与静态资源 `200`。
+
+
+## [2026-11-26] Step 8 筛选空结果反馈提示 + 投递文案防残留 `@公司名` 串词修复
+- **改动**：
+  1. `services/delivery_service.py`：当用户手写 `direction` 时，自动剥离简历 `desired_position` 中残留的 `@公司名` 后缀并约束 AI 未指定公司时统一称呼「贵司」。
+  2. `frontend/src/components/AIAssistant.jsx`：步骤 8 点击「筛选」结果为 0 条时，明确展示橙色提示（`共 X 个岗位，当前暂无 >= Y 分的岗位，可调低阈值或先去步骤 5 批量匹配`），不再静默空白。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-Bb1GhFIA.js`；`tests.test_pre_desktop_polish` 3/3 通过；重启 5000 端口服务并实测 `200`。
+
+
+## [2026-11-26] 步骤 4 精简状态栏（仅保留岗位总数栏）+ 下拉框去除 `(由SQLite驱动)` 字样
+- **改动**：
+  1. `frontend/src/components/JobMarket.jsx`：移除步骤 4 集市顶部重复的 4 项投递状态筛选标签（统一由 Step 9「求职投递看板」承接），改为简洁的一行「当前批次共 N 个岗位」统计栏（卡片右侧仍保留投递状态下拉选择）。
+  2. `routers/jobs.py` & `tests/test_job_routes_repository.py`：移除 `/api/jobs/list` 关键词后缀 `(由SQLite驱动)`，全站各步骤批次下拉框展示更清爽。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-Brd3VPFp.js`；`tests.test_job_routes_repository` 3/3 通过；重启 5000 端口服务并实测 `200`。
+
+
+## [2026-11-26] 修复猎聘统一模型配置与 51job/猎聘多源容错隔离 + Step 8 单岗 JD 精准联动写文案
+- **1. 猎聘模型配置与多源故障隔离**（`modules/browser_use_job_collector.py`、`services/job_collection.py`）：
+  - 猎聘智能浏览器 Agent 由硬编码 `DEEPSEEK_API_KEY` 改为优先读取全局 `config.LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`（直连当前智谱 `glm-4.7`，告别 402 余额不足）；
+  - 在多源采集时给 `51job` 和 `猎聘` 增加独立异常隔离，单个商业平台偶发异常不再连累其它渠道已采集结果。
+- **2. Step 8 筛选岗位与投递文案中心单岗 JD 精准联动**（`services/delivery_service.py`、`routers/deliveries.py`、`frontend/src/components/AIAssistant.jsx`）：
+  - 筛选列表每条岗位新增「✨ 针对此岗写文案」按钮，点击锁定该岗位并将完整 JD（公司/职位/薪资/标签/职责描述）通过 `target_job` 传入 `/api/deliver/greeting`，4 大文案场景全部支持针对所选 JD 专项生成。
+- **验证**：`py_compile` 0 错误；`oxlint` 0 警告 0 错误；`vite build` 产出 `index-uzyeghU-.js`；`tests.test_pre_desktop_polish` + `tests.test_workspace_scrape_context` 4/4 通过；重启 5000 端口服务并实测 `200`。
+
+
+## [2026-11-26] 修复猎聘子进程模型三件套错配（401）、异常 `.message` 笔误与进度城市硬编码
+- **改动**：
+  1. `modules/browser_use_job_collector.py`：改为统一调用 `modules.deepseek_client.resolve_llm_config()` 获取配套的 `(api_key, base_url, model)`，彻底解决子进程把智谱 Key 发给 DeepSeek 地址导致 401 的问题；同步将第 298 行写死的 `"正在打开猎聘广州搜索页"` 改为 `f"正在打开猎聘{city}搜索页"`。
+  2. `services/job_collection.py`：将 `err_lp.message` 修正为 `str(err_lp)`。
+- **验证**：`py_compile` 0 错误；`resolve_llm_config()` 断言确认 `provider=zhipu model=glm-4.7 host=open.bigmodel.cn`；重启 5000 端口并验证 `/api/status` 返回 `200`。
+
+[2026-11-26 09:08] 修复简历下拉框显示 `@公司名` 后缀问题：
+- `services/resume_precision.py`：对 `final_target` 自动截断 `@` / `＠` 后的公司名后缀，防止 Step 6 精准优化覆盖写回时污染 `desired_position`。
+- `frontend/src/components/AIAssistant.jsx`：新增 `formatResumeLabel` 辅助函数并统一应用到 7 处简历选择下拉框，展示为干净的 `姓名 - 岗位`（不再显示 `@公司名` 子标题后缀）。
+- 验证：`py_compile`、`test_resume_precision_repository` (4/4 OK)、`npm run lint` (0 errors)、`npm run build` (`index-DdS02zW2.js`) 全部通过。
+
+[2026-11-26 09:18] 修复猎聘网采集不到岗位的 3 处根因（`modules/browser_use_job_collector.py`）：
+- 修复 `_worker()` 进度文案变量名笔误（`{city}` → `{city_name}`），消除子进程启动即 `NameError` 退出问题。
+- 猎聘搜索 URL 补充 `dq=city_code` 参数（兼容新版地区筛选）并扩展 15 个主流城市代码（北上广深杭蓉汉宁苏津渝西长郑连）。
+- 升级 `_extract_liepin_cards()` 以兼容猎聘新版混淆 CSS 类名（如 `_40108veEPX`），按卡片文本结构提取标题、地点、薪资、公司与标签，并清洗标准岗位链接。
+- 验证：`py_compile`、`test_browser_use_job_collector` (8/8 OK)、本机实测 `collect_jobs('liepin', ['AI产品'], '广州')` 10 秒内直接稳定采回 7 个真实广州岗位（0 模型超时）。
+
+[2026-11-26 09:28] 完成 OfferForge 3.0 Windows PC 桌面端打包（绿色免安装版，无黑框 CMD 窗口）：
+- `config.py` / `app.py`：支持 PyInstaller 6 冻结运行目录（`BASE_DIR` 指向 `.exe` 同级目录存放 `.env`/`data`/`resumes`/`logs`，`RESOURCE_DIR` 指向 `_MEIPASS` 读取打包静态产物），并在本地模式下允许任意 `127.0.0.1/localhost` 端口 CORS。
+- 新增 `desktop_launcher.py`、`OfferForge.spec`、`build_desktop.ps1`、`static/offerforge.ico`：内置 Uvicorn 后台线程、无黑框日志重定向（防 `--windowed` 下 `NoneType.isatty` 崩溃）、Edge/Chrome 独立 `--app` 桌面应用窗口模式、关闭窗口自动优雅退出、支持 `--smoke-test` 自动化冒烟验收。
+- 产物：`dist/OfferForge/OfferForge.exe`（绿色包总大小 160.7 MB，附 `.env.example` 与 `使用说明.txt`，零密钥泄露）。
+- 验证：零外部服务下独立运行 `OfferForge.exe --smoke-test`，返回 `ExitCode=0`，`/api/status`、`/`、`/assets/index-DdS02zW2.js`、`/assets/index-DvQAMana.css` 全部 `200`。
+
+[2026-11-26 21:33] 生成单文件 Windows 安装包与卸载包并放置于项目根目录：
+- 新增 `installer/offerforge_setup.py`（图形化安装向导，支持自定义安装目录、桌面与开始菜单快捷方式、Windows 卸载注册表项、升级保护 `.env`）与 `installer/offerforge_uninstall.py`（图形化卸载向导，支持安全保留或清理个人数据、自动关闭运行实例、清理快捷方式与注册表）。
+- 构建产物位于根目录：`d:\AI_ONE\OfferForge_3.0_Setup.exe`（87.6 MB）与 `d:\AI_ONE\OfferForge_3.0_Uninstall.exe`（10.9 MB），且安装后自动在目标目录附带 `Uninstall.exe`。
+- 端到端闭环验收（隔离临时目录）：静默安装（Exit=0）→ 启动已安装的 `OfferForge.exe --smoke-test`（Exit=0，API/首页/JS/CSS 全部 200）→ 静默卸载（Exit=0，目录彻底清理）。
+
+[2026-11-26 22:31] 修复未配置 API Key 时误报“服务器内部错误”并更新安装包：
+- `core/api_responses.py`：在 `ERROR_STATUS_BY_CODE`、`UPSTREAM_MARKERS`、`BAD_REQUEST_MARKERS` 补充 `CONFIG_MISSING` / `AUTH_FAILED` / `INSUFFICIENT_BALANCE` / `TIMEOUT` 与“未配置/API 密钥/余额不足”等匹配，不再把缺密钥错误吞成 500 笼统报错。
+- `modules/deepseek_client.py`：优化缺密钥与密钥无效提示语，直接引导用户点击右上角「⚙️ 模型设置」配置。
+- 重新构建 `dist/OfferForge/OfferForge.exe` 与根目录 `OfferForge_3.0_Setup.exe`，闭环验收 `INSTALL=0 SMOKE=0 UNINSTALL=0 CLEAN=True`，`test_api_contract.py` 8/8 通过。
+
+[2026-11-26 22:56] 修复桌面端「模型设置」保存智谱 Key 报错“不支持的模型厂商”并新增密钥显隐切换：
+- `routers/system.py`：`GET /api/system/llm-config` 当 `LLM_PROVIDER` 为 `auto` 时自动归一化为已配置厂商或默认 `zhipu`；`POST /api/system/llm-config` 兼容把 `auto` 归一化为 `zhipu`。
+- `frontend/src/components/AIAssistant.jsx`：新增 `normalizeProvider` 兜底防止 React `<select>` 状态与视觉显示不一致；在 API Key 输入框右侧新增「👁 显示 / 🙈 隐藏」切换按钮。
+- 重新构建前端（`index-Cz90ij3P.js`）、`dist/OfferForge/OfferForge.exe` 与 `OfferForge_3.0_Setup.exe`；`test_pre_desktop_polish` (3/3 OK) 与隔离闭环验收 `INSTALL=0 SMOKE=0 UNINSTALL=0 CLEAN=True` 全部通过。
+
+[2026-11-26 23:08] 桌面端升级为方案 2（Windows 原生 WebView2 独立窗口）并更换 7 层高清原生图标：
+- `static/offerforge.ico`：基于 Pillow 重新绘制 7 层多分辨率原生应用图标（16/24/32/48/64/128/256px，深邃蓝紫圆角底 + 几何 OF + 暖金火花点缀）。
+- `desktop_launcher.py` & `OfferForge.spec`：接入 `pywebview` 6.2.1（`edgechromium` WebView2 原生嵌入窗口，启用 `text_select=True`、`ALLOW_DOWNLOADS=True`、`OPEN_EXTERNAL_LINKS_IN_BROWSER=True`），设置独立 `AppUserModelID`（`OfferForge.Studio.3`）与高分屏适配，彻底脱离浏览器任务栏关联；保留极端老系统回退机制。
+- 重新构建 `dist/OfferForge/OfferForge.exe`、`OfferForge_3.0_Uninstall.exe`（11 MB）与 `OfferForge_3.0_Setup.exe`（90 MB）。
+- 隔离临时目录闭环验收：`INSTALL=0 SMOKE=0 UNINSTALL=0 CLEAN=True`，`webview_ready=true`，API/首页/JS/CSS 全部 200。
+
+[2026-11-26 23:26] 上线 PC 桌面端专属「⚙️ 设置中心」（4 栏位 + 创意关于作者名片）与 Step 3「📄 一键直出高清 PDF」：
+- `routers/system.py`：新增 5 个仅限本机的桌面端接口：`POST /api/system/llm-test`（模型连通性与延迟探测）、`GET /api/system/desktop-info`（版本/路径/SQLite/日志概览）、`POST /api/system/open-folder`（白名单目录直开资源管理器）、`GET /api/system/backup-zip`（一键打包备份数据库与简历，自动排除 `.env`）、`POST /api/system/clear-logs`（清理本地运行日志）。
+- `routers/resume_actions.py`：新增 `POST /api/resume/export-pdf`，通过本机 Edge/Chrome Headless 静默直出 A4 高清 PDF 到 `resumes/exports/` 并在资源管理器高亮定位。
+- `frontend/src/components/AIAssistant.jsx` & `JobMarket.jsx`：顶部升级为 4 Tab「⚙️ 设置中心」（🤖 模型与 Key + 🔌 测试连接 | 💻 桌面端工具 | 🎨 界面与偏好自动预填 Step 4 | 👤 关于作者创意通行证名片含陈其锋信息与微信/邮箱一键复制）；Step 3 新增「一键直出高清 PDF」按钮。
+- 重新构建前端（`index-P4BJ95r4.js`）、`dist/OfferForge/OfferForge.exe` 与 `OfferForge_3.0_Setup.exe`，闭环验收 `INSTALL=0 SMOKE=0 UNINSTALL=0 CLEAN=True`、`webview_ready=true`。
+
+[2026-11-26 23:41] 上线 PC 端专属「剪贴板岗位 JD 三层规则自动捕获」并打包最终版安装包：
+- `routers/system.py`：新增 `_read_windows_clipboard_text()`（Win32 ctypes 0ms 纯本地读取）、`detect_clipboard_jd()`（长度/排除代码链接/命中岗位职责+任职要求+招聘条件≥2项三层门禁）与 `GET /api/system/clipboard-jd`。
+- `frontend/src/components/AIAssistant.jsx`：窗口获得焦点时静默本地探测，命中 JD 后在顶部展示轻提示条（支持一键跳转 Step 5 匹配评分 / Step 7 模拟面试 / 哈希去重忽略），并在「⚙️ 设置中心 → 💻 桌面端工具」提供开关。
+- 重新构建前端（`index-UIApeivz.js`）、`dist/OfferForge/OfferForge.exe` 与 `OfferForge_3.0_Setup.exe`，闭环验收 `INSTALL=0 SMOKE=0 UNINSTALL=0 CLEAN=True`、`webview_ready=true`。
+
+[2026-11-26 23:51] 加固大模型输入脏符号清洗与多层 JSON 自动修复，并封版 PC 桌面安装包：
+- `modules/deepseek_client.py`：新增 `sanitize_llm_input()`（清洗零宽空格、`\u2028/\u2029`、异常全角/不换行空格、ASCII 控制符，接入 `DeepSeekClient.chat()` 覆盖全部 9 步 AI 调用）与 `parse_llm_json_robust()`（状态机修复 JSON 字符串内未转义英文双引号、裸换行、尾逗号与 Markdown 围栏）。
+- `services/resume_optimization.py`：`_extract_ai_json()` 切换为 `parse_llm_json_robust()`，并在极端破损时自动以 `temperature=0.1` 静默重试 1 次。
+- 验证：19/19 简历优化测试 + 破损 JSON/脏符号专项压测通过；重新打包 `dist/OfferForge/OfferForge.exe` 与 `OfferForge_3.0_Setup.exe`，闭环验收 `INSTALL=0 SMOKE=0 UNINSTALL=0 CLEAN=True`。
+
+[2026-11-27 00:07] 修复 Step 3「一键直出高清 PDF」500 报错、WebView2 打印 `about:` 弹窗及“6 套”标签文案：
+- `routers/resume_actions.py`：`_export_pdf_direct_sync` 适配 `resume_template_service` 返回的 `HTMLResponse` 对象（读取 `.body`），并传入独立 `--user-data-dir` 避免与已开 Edge 冲突；实测直出有效 `%PDF-` 文件。
+- `frontend/src/components/AIAssistant.jsx`：`downloadTemplate("pdf")` 改为当前页隐藏 `<iframe>` 打印（彻底消除 WebView2 下 `window.open("", "_blank")` 触发的 `about:` 协议系统弹窗）；将“排版风格（6 套）”改为动态 `{templates.length}` 套（显示 12 套）。
+- 重新构建前端（`index-B5R-W7qO.js`）、`dist/OfferForge/OfferForge.exe` 与 `OfferForge_3.0_Setup.exe`，闭环验收 `INSTALL=0 SMOKE=0 UNINSTALL=0 CLEAN=True`。
+
+[2026-11-27 00:51] 完成 A+B 融合版全 Windows 兼容采集引擎（4 级浏览器自动探测 + 内置 Chrome Headless Shell 兜底内核 + 内置 Playwright 猎聘直采）：
+- 新增 `modules/browser_runtime.py`：4 级自动浏览器探测链（Microsoft Edge → Google Chrome → Brave/360/Vivaldi → 内置 Chrome Headless Shell 148 兜底内核），供 51job 与猎聘共用。
+- `modules/job_scraper.py` & `modules/browser_use_job_collector.py` & `services/job_collection.py`：猎聘切换为内置 Playwright 直采（彻底摆脱外部 `external/browser-use/.venv` 依赖，实测 5 秒直采 6 岗），并强化单源故障隔离（任意单个渠道异常不中断其余 16 个渠道）。
+- `OfferForge.spec`：将 `chromium_headless_shell-1223` 打包至 `_internal/playwright_browsers/`，生成全功能自包含安装包 `OfferForge_3.0_Setup.exe`（202.2 MB）。
+- 隔离临时目录闭环验收：`INSTALL=0 HAS_BUNDLED_KERNEL=True SMOKE=0 UNINSTALL=0 CLEAN=True`。
+
+[2026-11-27 02:09] 完成问题一 & 问题二（Step 6 任意岗位 JD 模式 + Step 2/6 三档改写力度/温度与护栏升级）：
+- `modules/resume_optimization_guard.py`：新增 `INTENSITY_PRESETS`（`mild` 0.3 / `balanced` 0.55 / `aggressive` 0.85）与智能非业绩数字过滤 `_metric_numbers()`，在均衡档/激进档放开分点序号与术语数字（如 `1./2.`、`0到1`、`B2B`、`GPT-4`）并允许提炼 JD 专业技能词，彻底解决润色结果被护栏静默回退原句问题。
+- `services/resume_optimization.py` & `services/resume_optimization_tasks.py` & `services/resume_precision.py` & `routers/resume_actions.py`：Step 2 与 Step 6 全链路透传 `intensity` 温度档位；Step 6 新增 `custom_jd` + `custom_target` 任意岗位 JD 直接定向优化。
+- `frontend/src/components/AIAssistant.jsx`：Step 2 与 Step 6 统一上线 3 档改写力度（温度）按钮；Step 6 上线「从已采集岗位中选择 / 直接粘贴任意岗位 JD」双模式切换；剪贴板 JD 提示条新增「✨ 去精准优化」快捷入口。
+- 验证：23/23 优化与精准优化测试全通过，`npm run lint` 0 错误，`npm run build` (`index-B1iWsR0T.js`) 通过。
+
+[2026-11-27 02:35] 完成问题三（全渠道多页翻页采集 + 单源上限统一 30 岗）并打包最终版安装程序：
+- `modules/job_scraper.py`：`search_51job` 修复原先仅在第 1 页滚动的问题，新增点击下一页按钮真实翻页（最多 3 页、单源上限 30 岗）。
+- `modules/browser_use_job_collector.py`：`_collect_liepin_with_playwright` 升级为 `currentPage=0..2` 多页直采（单源上限 30 岗），本机实测「广州 · 厨师」直接采回 28 岗。
+- `services/job_collection.py`：15 个官方开放源统一放宽至 `per_source_limit=30` + `max_pages=3`，51job 设为 `pages=3`，猎聘设为 `max_jobs=30`。
+- 重新打包 `dist/OfferForge/OfferForge.exe` 与 `OfferForge_3.0_Setup.exe`（含前端 `index-B1iWsR0T.js` 与内置兜底内核），闭环验收 `INSTALL=0 HAS_KERNEL=True SMOKE=0 UNINSTALL=0 CLEAN=True`。
+
+[2026-11-27 03:06] OfferForge 3.0 桌面版终极收官打磨并正式封版：
+- Step 6 自定义 JD 模式修复「重新检测匹配度」：`recheckPrecisionMatch` 在无批次文件时自动调用 `POST /api/jd/match` 对覆盖后的最新简历与自定义 JD 复测打分并渲染结果。
+- Step 7「AI 模拟面试官」去重升级：`services/interview_prep.py` 与 `routers/resume_actions.py` 支持 `avoid_questions`、`temperature`（默认提至 `0.72`）与 `question_count`；前端新增「🔄 换一批题库」按钮，自动避开已出过的题目并切换全新考察角度。
+- 左下角引擎状态卡升级：实时联动当前 API 厂商名与模型名、Key 配置状态灯（绿/黄），点击直达设置中心，右侧实时显示用户自定义的工作模式标签。
+- 设置中心「🎨 界面与偏好」扩展：新增自定义工作模式标签、全局默认改写力度、模拟面试默认出题数（4/5/6/8）与题库随机度（0.45/0.72/0.88）自定义。
+- 构建终极正式版 `dist/OfferForge/OfferForge.exe` 与 `OfferForge_3.0_Setup.exe`（含前端 `index-jTJP7Co8.js` 与内置兜底内核），闭环验收 `INSTALL=0 HAS_KERNEL=True SMOKE=0 UNINSTALL=0 CLEAN=True`。
+
+[2026-11-27 03:32] 完成最终 3 项收官打磨并封版（网页端与 PC 桌面端 100% 同步）：
+- `frontend/src/components/JobMarket.jsx`：选择简历时确立「设置中心预设（P0）> 简历字段（P1）」优先级，不再用简历空城市或薪资覆盖用户预设。
+- `frontend/src/components/AIAssistant.jsx`：修复 Step 6 自定义 JD 复测缺失 `skill_match`/`experience_match`/`education_match` 导致的 `undefined分`；将设置中心工作模式升级为 4 档「一键场景模式预设」（带说明卡片 + 自动联动改写力度/面试题数/随机度 + 保持开放自由微调）。
+- 重新构建前端（`index-GyarqinB.js`）、`dist/OfferForge/OfferForge.exe` 与 `OfferForge_3.0_Setup.exe`，闭环验收 `INSTALL=0 HAS_KERNEL=True SMOKE=0 UNINSTALL=0 CLEAN=True`。

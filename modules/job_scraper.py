@@ -4,19 +4,26 @@
 # ============================================
 import os, sys, json, time, random, re
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import DATA_DIR
+from config import DATA_DIR, WRITE_LEGACY_JOB_JSON
 from datetime import datetime
+from urllib.parse import urlencode
+from modules.job_repository import save_collected_job_batch
+from modules.job_sources import resolve_sources
+from modules.job_sessions import BrowserSessionStore
 
 
 def load_profile():
     """加载最新的简历（按文件修改时间排序）"""
+    from core.workspace_context import get_active_data_dir
+
+    active_dir = get_active_data_dir(DATA_DIR)
     profiles = []
-    if os.path.exists(DATA_DIR):
-        files = [f for f in os.listdir(DATA_DIR) if f.startswith("resume_") and f.endswith(".json")]
+    if os.path.exists(active_dir):
+        files = [f for f in os.listdir(active_dir) if f.startswith("resume_") and f.endswith(".json")]
         # 按文件修改时间倒序，最新的在前
-        files.sort(key=lambda f: os.path.getmtime(os.path.join(DATA_DIR, f)), reverse=True)
+        files.sort(key=lambda f: os.path.getmtime(os.path.join(active_dir, f)), reverse=True)
         for f in files:
-            with open(os.path.join(DATA_DIR, f), "r", encoding="utf-8") as fp:
+            with open(os.path.join(active_dir, f), "r", encoding="utf-8") as fp:
                 profiles.append(json.load(fp))
     if not profiles:
         return None
@@ -26,7 +33,7 @@ def load_profile():
 def extract_keywords(profile):
     """从简历提取搜索关键词：优先使用求职意向，自动拆分行业+职位"""
     keywords = []
-    
+
     # 1. 求职意向（优先级最高）
     desired = profile.get("desired_position", "")
     if desired:
@@ -50,7 +57,7 @@ def extract_keywords(profile):
                 seen.add(k)
                 result.append(k)
         return result[:5]
-    
+
     # 2. 求职意向为空时，才从工作经历中提取关键词
     experiences = profile.get("work_experience", []) + profile.get("internship", [])
     exp_kws = set()
@@ -68,7 +75,7 @@ def extract_keywords(profile):
                 exp_kws.add(kw)
     for kw in list(exp_kws)[:5]:
         keywords.append(kw)
-    
+
     # 去重
     seen = set()
     result = []
@@ -98,10 +105,10 @@ def infer_salary_range(profile):
             upper = int(base) + 3
             return f"{lower}k-{upper}k"
         return desired
-    
+
     experiences = profile.get("work_experience", []) + profile.get("internship", [])
     position = profile.get("desired_position", "")
-    
+
     # 计算经验年限
     total_years = 0.0
     for exp in experiences:
@@ -112,10 +119,10 @@ def infer_salary_range(profile):
             if "至今" in dur or "现在" in dur:
                 end = 2026
             total_years += max(0, end - start)
-    
+
     is_junior = total_years < 1 or ("实习" in position or "协助" in position or "助理" in position)
     is_entry = total_years < 0.5 or ("应届" in position or "实习" in position or "小白" in position)
-    
+
     if is_entry:
         return "3k-6k"
     elif is_junior:
@@ -148,7 +155,7 @@ def extract_location(profile):
         "镇江", "扬州", "常州", "徐州", "南通", "盐城",
         "金华", "台州", "湖州",
     ]
-    
+
     # 省份→省会映射
     province_to_capital = {
         "湖南": "长沙", "湖北": "武汉", "广东": "广州", "广西": "南宁",
@@ -159,27 +166,27 @@ def extract_location(profile):
         "贵州": "贵阳", "海南": "海口", "内蒙古": "呼和浩特", "新疆": "乌鲁木齐",
         "西藏": "拉萨", "青海": "西宁", "宁夏": "银川",
     }
-    
+
     text = json.dumps(profile, ensure_ascii=False)
-    
+
     # 1. 先找城市名
     found_cities = []
     for city in cities:
         if city in text:
             found_cities.append(city)
-    
+
     if found_cities:
         from collections import Counter
         top = Counter(found_cities).most_common(1)[0][0]
         print(f"提取地点(城市): {top}")
         return top
-    
+
     # 2. 没找到城市名，尝试从省份推断省会
     for province, capital in province_to_capital.items():
         if province in text:
             print(f"提取地点(省份→省会): {province} → {capital}")
             return capital
-    
+
     return None
 
 # 51job metro 城市码映射
@@ -204,11 +211,30 @@ METRO_CODES = {
     "绵阳": "090400", "宜宾": "091600",
 }
 
+def normalize_city_name(city_name):
+    """Only accept an explicitly configured city name, with an optional 市 suffix."""
+    if not isinstance(city_name, str):
+        return ""
+    normalized = re.sub(r"\s+", "", city_name).removesuffix("市")
+    return normalized if normalized in METRO_CODES else ""
+
+
 def get_metro_code(city_name):
-    for city, code in METRO_CODES.items():
-        if city_name and city in city_name:
-            return code
-    return "000000"
+    return METRO_CODES.get(normalize_city_name(city_name), "000000")
+
+
+class CityFilterError(RuntimeError):
+    """Search results could not be verified against the requested city."""
+
+
+class CollectionStopped(RuntimeError):
+    """Cooperative stop requested between safe scraper steps."""
+
+    def __init__(self, reason, message=None):
+        self.reason = reason
+        if not message:
+            message = "岗位采集已超时" if reason == "timed_out" else "岗位采集已取消"
+        super().__init__(message)
 
 
 class JobScraper:
@@ -220,28 +246,46 @@ class JobScraper:
         self.jobs = []
         self.profile = None
         self.keywords = []
+        self.context = None
+        self.session_store = BrowserSessionStore()
+        self.session_warning = ""
+        self.stop_check = None
+
+    def _check_stop(self):
+        if callable(self.stop_check):
+            reason = self.stop_check()
+            if reason:
+                raise CollectionStopped(reason)
 
     def set_profile(self, profile):
         self.profile = profile
         self.keywords = extract_keywords(profile) if profile else []
+        self.primary_keyword = self.keywords[0] if self.keywords else ""
+        requested_city = (
+            profile.get("target_city")
+            or extract_location(profile)
+            or "广州"
+        ) if profile else "广州"
+        self.location = normalize_city_name(requested_city) or requested_city.strip()
         print(f"搜索关键词: {self.keywords}")
 
     def _launch_browser(self):
         from playwright.sync_api import sync_playwright
+        from modules.browser_runtime import launch_best_chromium_browser
+
         self.playwright = sync_playwright().start()
+        self.browser, browser_label = launch_best_chromium_browser(
+            self.playwright,
+            headless=self.headless,
+        )
+        print(f"使用 {browser_label} 浏览器")
         try:
-            self.browser = self.playwright.chromium.launch(
-                channel="msedge", headless=self.headless,
-                args=["--disable-blink-features=AutomationControlled"]
-            )
-            print("使用 Edge 浏览器")
-        except:
-            self.browser = self.playwright.chromium.launch(
-                headless=self.headless,
-                args=["--disable-blink-features=AutomationControlled"]
-            )
-            print("使用 Chromium 浏览器")
-        self.page = self.browser.new_page()
+            state = self.session_store.load("51job")
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError):
+            state = None
+            self.session_warning = "本地会话无法恢复，本次使用独立空会话"
+        self.context = self.browser.new_context(storage_state=state)
+        self.page = self.context.new_page()
         self.page.set_viewport_size({"width": 1280, "height": 800})
         self.page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
@@ -252,95 +296,191 @@ class JobScraper:
         time.sleep(random.uniform(min_sec, max_sec))
 
     def close(self):
-        if self.browser: self.browser.close()
-        if self.playwright: self.playwright.stop()
+        try:
+            if self.context:
+                try:
+                    self.session_store.save("51job", self.context.storage_state())
+                except (OSError, ValueError, RuntimeError, TypeError):
+                    self.session_warning = "本地会话保存失败，下次可能需要重新登录"
+        finally:
+            try:
+                if self.browser: self.browser.close()
+            finally:
+                if self.playwright: self.playwright.stop()
     def search_all(self, platforms=None, pages=2):
         """????????"""
-        if not platforms:
-            platforms = ["51job", "liepin"]
+        sources = resolve_sources(["51job"] if platforms is None else platforms)
+        if any(not callable(getattr(self, source.handler or "", None)) for source in sources):
+            raise ValueError("该来源需要由独立采集适配器处理，不能交给传统采集器")
         if not self.page:
             self._launch_browser()
 
         # ???? + ??????
-        self.location = "广州"  # Guangzhou
+        if not getattr(self, "location", ""):
+            self.location = "广州"
         # ??????app.py???????????????
         if not hasattr(self, "salary_range") or not self.salary_range:
             self.salary_range = infer_salary_range(self.profile) if self.profile else ""
         print(f"????: {self.location} | ????: {self.salary_range}")
 
         all_jobs = []
-        for plat in platforms:
+        for source in sources:
+            self._check_stop()
+            plat = source.code
             print(f"\n>>> ????: {plat}")
-            if plat == "51job":
-                jobs = self.search_51job(pages=pages)
-            elif plat == "liepin":
-                jobs = self.search_liepin(pages=pages)
-            else:
-                print(f"  ????: {plat}")
-                continue
+            jobs = getattr(self, source.handler)(pages=pages)
             print(f"  {plat}: {len(jobs)} ???")
             all_jobs.extend(jobs)
 
-        self.jobs = all_jobs
+        self.jobs = self._deduplicate_and_rank(all_jobs)
         print(f"\n?? {len(self.jobs)} ???")
         return self.jobs
 
-    def search_51job(self, pages=3):
+    def _deduplicate_and_rank(self, jobs):
+        """Keep the best copy and rank primary-position results before related queries."""
+        best = {}
+        primary = getattr(self, "primary_keyword", "")
+        keywords = list(getattr(self, "keywords", []))
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            title = str(job.get("title", "")).strip()
+            company = str(job.get("company", "")).strip()
+            location = str(job.get("location", "")).strip()
+            source = str(job.get("source", "")).strip()
+            job_id = str(job.get("job_id", "")).strip()
+            matched_query = str(job.get("keyword", "")).strip()
+            score = 0
+            if primary and primary in title:
+                score += 70
+            if matched_query == primary:
+                score += 25
+            if any(keyword and keyword in title for keyword in keywords[1:]):
+                score += 35
+            if title:
+                score += 5
+            enriched = dict(job)
+            enriched["relation_type"] = "primary" if matched_query == primary else "related"
+            enriched["relevance_score"] = min(score, 100)
+            key = ("id", source, job_id) if job_id else (
+                "content", source, re.sub(r"\s+", "", title).lower(),
+                re.sub(r"\s+", "", company).lower(), re.sub(r"\s+", "", location).lower(),
+            )
+            if key not in best or enriched["relevance_score"] > best[key]["relevance_score"]:
+                best[key] = enriched
+        return sorted(best.values(), key=lambda item: (-item["relevance_score"], item.get("title", "")))
+
+    def search_51job(self, pages=3, max_jobs=30):
         if not self.keywords:
             print("没有搜索关键词")
             return []
         all_jobs = []
         seen_ids = set()
+        max_per_source = max(1, min(int(max_jobs or 30), 30))
         for kw in self.keywords:
+            if len(all_jobs) >= max_per_source:
+                break
+            self._check_stop()
             print(f"  >>> 51job 搜索: {kw}")
-            # 51job ?? jobArea ???????metro???????jobArea?
-            url = f"https://we.51job.com/pc/search?keyword={kw}&searchType=2&sortType=0&jobArea=030200"
+            metro_code = get_metro_code(self.location)
+            if metro_code == "000000":
+                raise CityFilterError("目标城市没有配置城市码，已停止采集，避免使用默认城市")
+            url = "https://we.51job.com/pc/search?" + urlencode({
+                "keyword": kw, "searchType": 2, "sortType": 0, "jobArea": metro_code,
+            })
             try:
-                self.page.goto(url, wait_until="networkidle", timeout=30000)
-                self.random_delay(2, 3)
-                
-                # ??????????????????????
-                try:
-                    page_title = self.page.title()
-                    if "??" not in page_title:
-                        print(f"  ????????: {page_title}?????...")
-                        self._click_city_tab("??")
-                        self.random_delay(2, 3)
-                except:
-                    pass
-                
-                for p in range(pages):
+                self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                self._check_stop()
+                self._wait_for_city_results(kw)
+
+                max_p = max(1, min(int(pages or 3), 3))
+                for page_num in range(1, max_p + 1):
+                    self._check_stop()
                     self.page.evaluate("window.scrollBy(0, 800)")
                     self.random_delay(1, 2)
-                cards = self.page.query_selector_all(".joblist-item")
-                print(f"  找到 {len(cards)} 个岗位卡片")
-                for card in cards:
-                    try:
-                        job = self._parse_51job_card(card, kw)
-                        if job and job.get("job_id") not in seen_ids:
-                            seen_ids.add(job.get("job_id"))
-                            # 强地点过滤：必须包含目标城市名
-                            job_loc = job.get("location", "") or ""
-                            if self.location and self.location not in job_loc:
-                                city_core = self.location.replace("市", "").replace("省", "")
-                                if city_core not in job_loc:
-                                    continue  # 跳过不匹配城市的岗位
-                                if self.location not in job_loc:
-                                    city_core = self.location.replace("市", "")
-                                    if city_core not in job_loc:
-                                        continue
-                            # 薪资先不过滤，收集所有岗位，后面统一处理
-                            all_jobs.append(job)
-                    except Exception as e:
-                        pass
+                    cards = self.page.query_selector_all(".joblist-item")
+                    if page_num == 1:
+                        self._require_city_results(cards, kw)
+                    print(f"  第{page_num}页找到 {len(cards)} 个岗位卡片")
+                    added_this_page = 0
+                    for card in cards:
+                        self._check_stop()
+                        try:
+                            job = self._parse_51job_card(card, kw)
+                            if job and job.get("job_id") not in seen_ids:
+                                job_loc = job.get("location", "") or ""
+                                if not self._city_matches(job_loc):
+                                    continue
+                                seen_ids.add(job.get("job_id"))
+                                all_jobs.append(job)
+                                added_this_page += 1
+                                if len(all_jobs) >= max_per_source:
+                                    break
+                        except Exception:
+                            pass
+                    if len(all_jobs) >= max_per_source or page_num >= max_p or added_this_page == 0:
+                        break
+                    # 真实翻页：点击下一页按钮
+                    next_btn = None
+                    for sel in ("button.btn-next:not([disabled])", ".el-pagination .btn-next:not([disabled])", ".btn-next:not(.disabled)"):
+                        try:
+                            cand = self.page.query_selector(sel)
+                            if cand and cand.is_visible():
+                                next_btn = cand
+                                break
+                        except Exception:
+                            continue
+                    if not next_btn:
+                        break
+                    first_before = cards[0].inner_text()[:40] if cards else ""
+                    next_btn.click()
+                    self.random_delay(1.5, 2.5)
+                    for _ in range(10):
+                        self._check_stop()
+                        new_cards = self.page.query_selector_all(".joblist-item")
+                        first_after = new_cards[0].inner_text()[:40] if new_cards else ""
+                        if new_cards and first_after != first_before:
+                            break
+                        self.page.wait_for_timeout(300)
+            except (CityFilterError, CollectionStopped):
+                raise
             except Exception as e:
                 print(f"  51job搜索 '{kw}' 出错: {e}")
-        
+                raise RuntimeError("51job页面加载或采集失败，请检查网络、登录状态后重试") from e
+
         # 薪资分级过滤：精确匹配 → 放宽2-3k → 返回所有
         if self.salary_range:
             all_jobs = self._filter_by_salary_tiered(all_jobs)
-        
-        return all_jobs
+
+        return all_jobs[:max_per_source]
+
+
+    def _city_matches(self, location):
+        city = self.location.removesuffix("市").strip()
+        return bool(city and isinstance(location, str) and re.match(
+            rf"^(?:广东省)?{re.escape(city)}(?:市)?(?:$|[-·/\\s区县])", location.strip()
+        ))
+
+    def _require_city_results(self, cards, keyword):
+        jobs = [self._parse_51job_card(card, keyword) for card in cards]
+        if any(job and self._city_matches(job.get("location")) for job in jobs):
+            return
+        if any(job and job.get("location") for job in jobs):
+            raise CityFilterError(f"城市筛选未生效：未发现{self.location}岗位，已停止采集")
+        raise CityFilterError("无法确认目标城市结果：可能无岗位、需要登录或页面结构变化，请检查后重试")
+
+    def _wait_for_city_results(self, keyword, timeout_ms=12000):
+        deadline = time.monotonic() + timeout_ms / 1000
+        while True:
+            self._check_stop()
+            cards = self.page.query_selector_all(".joblist-item")
+            try:
+                self._require_city_results(cards, keyword)
+                return
+            except CityFilterError:
+                if time.monotonic() >= deadline:
+                    raise
+            self.page.wait_for_timeout(250)
 
 
     def _click_city_tab(self, city_name):
@@ -382,7 +522,7 @@ class JobScraper:
         except:
             pass
         print(f"  未找到城市选项卡: {city_name}")
-        
+
         # JS fallback
         try:
             js_code = f'(function(){{var c="{core}";var a=document.querySelectorAll("a,span,div,li");for(var i=0;i<a.length;i++){{var t=(a[i].innerText||"").trim();if(t===c||(t.indexOf(c)>=0&&t.length<=8)){{a[i].click();return"ok:"+t}}}}return"no"}})()'
@@ -414,7 +554,7 @@ class JobScraper:
         try:
             if not self.salary_range or not job_salary:
                 return True
-            
+
             def to_k(text):
                 try:
                     t = str(text).lower().replace(" ", "").replace(",", "")
@@ -431,19 +571,19 @@ class JobScraper:
                     return (min(v), max(v)) if len(v) > 1 else (v[0], v[0])
                 except:
                     return None
-            
+
             jk = to_k(job_salary)
             rk = to_k(self.salary_range)
             if not jk or not rk:
                 return True
-            
+
             j_min, j_max = jk
             r_min, r_max = rk
-            
+
             # 放宽范围: r_min - widen 到 r_max + widen
             r_min_widened = max(0, r_min - widen)
             r_max_widened = r_max + widen
-            
+
             return not (j_max < r_min_widened or j_min > r_max_widened)
         except:
             return True
@@ -504,7 +644,7 @@ class JobScraper:
             salary = salary_el.inner_text().strip() if salary_el else ""
             loc_el = card.query_selector("[class*=area], [class*=location], .job-area")
             location = loc_el.inner_text().strip() if loc_el else ""
-            job_id = str(hash(title + (salary or ""))) 
+            job_id = str(hash(title + (salary or "")))
             return {
                 "job_id": job_id, "title": title,
                 "salary": salary, "location": location,
@@ -549,12 +689,22 @@ class JobScraper:
         except:
             return True
 
-    def save_jobs(self):
-        """???????JSON??"""
-        os.makedirs(DATA_DIR, exist_ok=True)
+    def save_jobs(
+        self,
+        data_dir=None,
+        db_path=None,
+        include_payload=False,
+        write_legacy_json=WRITE_LEGACY_JOB_JSON,
+    ):
+        """保存岗位数据；需要继续处理时可同时返回内存中的批次数据。"""
+        from core.workspace_context import get_active_data_dir
+
+        data_dir = data_dir or get_active_data_dir(DATA_DIR)
+        os.makedirs(data_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"jobs_{timestamp}.json"
-        filepath = os.path.join(DATA_DIR, filename)
+        filepath = os.path.join(data_dir, filename)
+
         data = {
             "profile": {
                 "name": self.profile.get("name", "") if self.profile else "",
@@ -565,9 +715,21 @@ class JobScraper:
             "collected_at": datetime.now().isoformat(),
             "jobs": self.jobs
         }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"\n???: {filepath}")
+
+        # 1. 由统一仓库在同一个事务中保存基础索引和完整批次。
+        saved = save_collected_job_batch(filename, data, db_path)
+        print(
+            f"\n[OK] SQLite saved {saved['indexed_jobs']} jobs and one full batch."
+        )
+
+        # 2. 旧版JSON默认停止写入；仅在显式打开兼容开关时保留。
+        if write_legacy_json:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"Compatibility JSON retained: {filepath}")
+
+        if include_payload:
+            return filepath, data
         return filepath
 
 def run_test():
@@ -585,7 +747,7 @@ def run_test():
     scraper.set_profile(profile)
     try:
         scraper._launch_browser()
-        scraper.search_all(platforms=["51job", "liepin"], pages=2)
+        scraper.search_all(platforms=["51job"], pages=2)
         if scraper.jobs:
             scraper.save_jobs()
             for j in scraper.jobs[:10]:

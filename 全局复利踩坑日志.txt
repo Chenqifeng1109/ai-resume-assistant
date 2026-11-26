@@ -51,6 +51,17 @@
    - 核心规则：每2次改动后自动清理非核心文件
    - 改动后必须自检，但不要修理当前指令未要求的内容
 
+==================================================
+
+[2026-07-27] [自检失败] D6运行验收脚本协议与环境参数不匹配
+文件：仅验收命令，项目代码未因此修改
+现象：首次组合验收脚本在工具包装层发生JavaScript引号语法错误；首次WebSocket测试发送纯文本ping而服务端要求JSON，连接被关闭；本机PowerShell的Invoke-WebRequest不支持-NoProxy参数。
+根因：把含多层引号的PowerShell/Python脚本嵌入JavaScript包装；未先核对app.py中的WebSocket消息协议；误用了当前PowerShell版本不存在的参数。
+失败做法：在组合工具脚本中直接嵌套复杂正则与引号；向/ws发送字符串ping；使用Invoke-WebRequest -NoProxy。
+修正：改用单一PowerShell shell调用承载内联Python；先读取WebSocket端点后发送{"type":"ping"}；HTTP改用urllib.request.ProxyHandler({})显式禁用代理。
+验证：首页与3个API路径正常；最新JS/CSS均200；WebSocket依次收到log、pong；数据库哈希不变。
+预防：运行验收前先读取实际协议；复杂多语言脚本避免再嵌套一层JavaScript字符串；代理隔离优先使用项目已验证的urllib空ProxyHandler方案。
+
 
 ═══════════════════════════════════════════════════════
 
@@ -157,3 +168,582 @@
 - 根因：Python的静态文件服务可能缓存了文件内容，或者浏览器缓存未清除
 - 解决：每次修改v7.js后必须重启Python进程 + v7.html带版本号参数(?v=timestamp)
 - 教训：重启服务器不是可选的，是必须的步骤
+
+
+[2026-07-14] [不满意/自纠错] Skill 生成范围理解偏差
+描述：用户要求根据文件夹日志提炼个人习惯和规则，并生成一个可直接调用的 Codex skill；最初错误地把项目源码扫描和桌面优化文档评审混入了 skill 生成逻辑。
+根因：没有先锁定“skill 的规则来源”和“其他项目评审任务”是两个独立交付物。
+修复：立即收窄范围，只以 全局控制台.txt、全局复利踩坑日志.txt、Codex工作日志.txt 为主要依据，生成单一个人安全编码工作流 skill。
+预防：以后遇到“根据 A 生成 skill，同时再检查 B”的复合请求，先明确 skill 只封装 A 中的稳定规则，不把 B 的临时项目结论写入永久 skill。
+
+
+[2026-07-14] [自检失败] Windows 默认编码导致 Skill 元数据生成失败
+文件：C:\Users\MR\.codex\skills\mr-safe-coding-workflow\SKILL.md
+现象：第一次初始化因 short_description 只有22字符而失败；第二次生成 openai.yaml 时，Python 默认 GBK 读取中文 UTF-8 的 SKILL.md，触发 UnicodeDecodeError。
+根因：未先满足 UI 元数据 25-64 字符约束；Windows Python 默认文本编码不是 UTF-8。
+修复：将短描述扩展到合规长度；设置 PYTHONUTF8=1 并使用 python -X utf8 重新生成。
+验证：quick_validate 通过，全部 skill 文本文件可按 UTF-8 读取且无 BOM。
+预防：在 Windows 上运行处理中文 skill 的 Python 工具时，默认启用 UTF-8 模式，并在生成前检查界面字段长度约束。
+
+
+[2026-07-14] [自检失败/自纠错] 备份保留顺序不能依赖 Copy-Item 时间
+文件：C:\Users\MR\.codex\skills\mr-safe-coding-workflow\scripts\backup_file.ps1
+现象：备份文件名带有新时间戳，但 Copy-Item 默认保留源文件 LastWriteTime；如果按 LastWriteTime 清理，第6份以后可能无法稳定判断最新5份。
+根因：把“备份创建时间”和“复制后文件的修改时间”错误地视为同一字段。
+修复：改为按包含 yyyyMMdd_HHmmssfff 时间戳的备份文件名降序排序，再删除第6份及以后文件。
+验证：连续执行7次备份后，目录准确保留最新5份；PowerShell 语法解析0错误；skill quick_validate 通过。
+预防：版本化备份的保留顺序应使用脚本生成的确定性时间戳或显式设置创建时间，不依赖复制操作继承的源元数据。
+
+
+[2026-07-14] [自纠错] Skill 安装表面与目录混淆
+现象：Skill 已生成但用户在插件列表中看不到。
+根因：把“本地 skill 安装”和“plugin 安装”混为一谈，并使用了不适用于当前 Codex 桌面扫描的旧目录。
+修复：按当前 Codex 规则将 skill 安装到 C:\Users\MR\.agents\skills\mr-safe-coding-workflow；说明插件列表只显示 plugin 包，skill 应在 Skills 侧栏或用 $ 名称调用。
+预防：创建个人 skill 时使用用户 skill 目录；只有需要连接器、MCP 或分发多个能力时才封装成 plugin。
+
+[2026-07-14] OfferForge 编码踩坑：不要把混合编码文件整体按 GBK 转换。
+现象：整体转换会把原本正常的 UTF-8 中文变成异常字符。
+正确做法：先保留备份，再定位非法字节，只转换异常片段，并用 UTF-8 严格读取和 AST 双重验证。
+
+[2026-07-14] API 路由整理经验：不同功能应使用不同路径；同一路径重复装饰会让 FastAPI 注册顺序决定实际行为，造成维护风险。先统计路由，再做最小补丁。
+
+[2026-07-14] 批处理中文编码踩坑
+现象：UTF-8 无 BOM 的中文 start.bat 被 cmd.exe 拆成乱码命令。
+根因：传统 cmd 对 UTF-8 批处理的解析在不同 Windows 环境下不稳定。
+失败方案：在 bat 中设置 chcp 65001 后直接写中文命令文本。
+修正：批处理控制层使用 ASCII 提示，项目界面和教学继续使用中文。
+验证：模拟缺失 Python 分支输出正常并返回错误码 1；真实服务启动和首页请求通过。
+预防：需要跨机器稳定运行的 .bat 使用 ASCII；中文复杂提示应迁移到 PowerShell 或应用界面。
+
+[2026-07-14] 前端验证与 PowerShell 字符替换踩坑
+现象1：String.Replace(char, char) 不能用空字符串删除 BOM。修正为 String.Replace(string, string)，并验证 BOM 数量从 6 降到 0。
+现象2：首页包含外部 Spline JS，简单正则先抓到外部地址；Playwright Chromium 也未安装。修正为只筛选 /assets/ 项目资源，并用系统 Edge 进行无头验证。
+验证：项目 JS/CSS 200，页面渲染成功，浏览器控制台 0 错误。
+预防：资源检查应区分外部脚本和本地打包资源；浏览器自动化先检测可执行文件。
+
+[2026-07-14] PowerShell 测试变量命名踩坑
+现象：首页冒烟测试给 $HOME 赋值时报只读变量错误，导致首次首页断言未执行。
+根因：PowerShell 变量名大小写不敏感，$home 与内置 $HOME 相同。
+修正：改用 $pageResponse 后重新测试。
+验证：GET / 200，包含 React root；GET /api/status 200。
+预防：测试脚本避免使用 HOME、PID、Host 等 PowerShell 自动变量名。
+
+[2026-07-14] 相同代码块补丁必须带唯一上下文
+现象：首次删除第二个重复函数时，因为两段函数体完全相同且补丁没有前后唯一标记，工具匹配并删除了第一段。
+根因：仅凭相同函数体无法区分目标代码块。
+失败方案：生成只有删除行、没有唯一上下文的补丁。
+修正：立即从 backups\app_20260714_211553520.py.bak 恢复，再把后续 /api/jd/batch-match 作为唯一上下文重新删除第二段。
+验证：保留函数位于原第一段位置且装饰器数=1；路由数=1；接口错误路径实测通过。
+预防：处理重复代码时，补丁必须包含目标块前后独有的函数名、路由或注释；验证不能只看语法，还要核对保留对象的位置和装饰器。
+
+[2026-07-15] WebSocket 依赖与本地代理测试踩坑
+现象：首次WebSocket测试缺少 websockets 包；补齐 uvicorn[standard] 后，websockets 16 客户端仍在服务器收到请求前断开。
+根因：requirements 只声明普通 uvicorn，未包含WebSocket实现；新版客户端还会自动读取系统代理。
+修正：requirements 使用 uvicorn[standard]；测试本机地址时传 proxy=None。
+验证：服务器接受 /ws，客户端依次收到 log 和 pong。
+预防：声明与代码功能匹配的运行依赖；本地网络协议测试显式绕过系统代理。
+
+[2026-07-15] 多工作目录测试必须显式指定根目录
+现象：前端lint/build通过，但同一命令中的Python AST检查从 frontend 目录运行，找不到根目录 app.py/config.py。
+根因：把后端相对路径检查与前端命令放在 frontend 工作目录。
+修正：回到 D:\AI_ONE 单独运行后端AST和应用导入检查。
+验证：13个Python文件AST错误为0，应用导入正常。
+预防：后端检查固定 workdir=项目根；前端npm检查固定 workdir=frontend，不在同一工作目录混跑。
+
+[2026-07-15] 大补丁应拆分为可验证的小补丁
+现象：首次同时添加共享状态、修改导入和替换全部引用时，因 app.py 空行数量与补丁上下文不一致，apply_patch整体拒绝。
+根因：单个补丁包含多个区域，其中一个上下文不匹配导致整批无法应用。
+修正：确认文件未改变后，拆成状态定义与导入、逐处状态读写替换两个精确补丁。
+验证：旧 scraper_status/global 引用为0，共享对象、接口正常与错误路径均通过。
+预防：长文件重构分小块应用，每块立即检查，不依赖脆弱的空行上下文。
+
+[2026-07-15] 路由迁移测试的编码、代理与变量名陷阱
+现象：自动删除补丁经控制台输出中文后变乱码而无法匹配；PowerShell 5解析中文JSON文件名产生乱码；首页测试再次误用只读HOME变量；urllib自动代理本机请求得到502。
+根因：源码补丁不应经默认控制台编码往返；旧PowerShell JSON编码行为；未落实自动变量禁用规则；HTTP客户端继承系统代理。
+修正：使用UTF-8原文精确apply_patch；中文JSON测试改用Python UTF-8解码；首页变量使用pageResponse；urllib使用ProxyHandler空字典绕过代理。
+验证：中文文件名无替换字符，详情ok=true，latest=true，首页200。
+预防：中文源码补丁直接基于文件原文；本机HTTP/WebSocket测试统一禁用代理；测试脚本禁用HOME等自动变量名。
+
+[2026-07-16] 上传删除闭环测试暴露的Windows编码与测试清理问题
+现象：隔离上传在SQLite写入后打印对勾/叉号时触发GBK UnicodeEncodeError；首次清理命令两次被PowerShell引号破坏；curl上传未到服务器。
+根因：Windows默认控制台不能编码表情；多层命令行转义不可靠；curl继承系统代理。
+修正：控制台提示改为普通中文标记；临时使用apply_patch创建固定标识清理脚本并运行后删除；curl加入--noproxy星号。
+验证：残留测试记录0、测试原始文件False、临时脚本False；默认编码下上传删除闭环通过；真实HTTP错误路径返回预期JSON。
+预防：控制台日志避免表情；涉及数据库清理的多行测试使用受控临时脚本；所有本机HTTP客户端显式绕过代理。
+
+[2026-07-16] [自检失败/自纠错] 岗位路由回归测试脚本误报
+现象：第一次 urllib 请求本机接口返回502；修正后，中文错误信息断言和 WebSocket PONG 断言仍先后失败。
+根因：urllib 继承系统代理；PowerShell 管道向 Python stdin 传递中文源码时发生编码损坏；WebSocket 实际协议要求发送 {"type":"ping"} JSON，且连接后第一条消息是 log，不是 pong。
+失败做法：直接使用默认 urllib；在 PowerShell here-string 中写中文预期值；向 WebSocket 发送纯文本 ping 并只读取第一条消息。
+修正：本机 urllib 使用空 ProxyHandler；中文路径改为比较旧函数与新函数真实返回，不在管道脚本硬编码中文；WebSocket 发送 JSON，并持续读取到 pong。
+验证：旧、新岗位查询函数连续10轮结果哈希一致；真实 HTTP 列表、详情、错误路径通过；WebSocket 消息顺序为 log、pong。
+预防：本机回归脚本统一禁用代理；经 PowerShell stdin 的 Python 测试不硬编码中文断言；WebSocket 测试必须先阅读并遵循消息协议，同时允许连接欢迎消息先到达。
+
+[2026-07-16] [自检失败/自纠错] 永久汇报规则日志保留了旧BOM
+现象：固定汇报格式和八个栏目均已正确写入，但合并编码检查显示 NO_BOM=False。
+根因：全局控制台.txt 在本次修改前已经带有 UTF-8 BOM；追加补丁只修改正文，不会自动移除旧文件头。
+失败做法：只验证两份日志的合并布尔结果，没有先分别报告每个文件的 BOM 状态。
+修正：逐文件检查前三个字节，确认只有全局控制台.txt 以 EF BB BF 开头；仅重新编码该文件为 UTF-8 无 BOM，正文保持不变。
+验证：全局控制台.txt 与 Codex工作日志.txt 均可严格按 UTF-8 读取，文件头均无 BOM；规则8和八个栏目仍完整存在。
+预防：修改既有日志后必须逐文件输出 UTF-8 与 BOM 检查结果，不用一个合并结果掩盖具体文件状态。
+
+[2026-07-16] [自检失败/自纠错] Service搬迁后残留FastAPI Form默认值
+现象：新建job_collection Service通过py_compile和AST解析，但首次独立导入前检查发现start_scrape函数签名仍含Form(...)，Service文件本身没有也不应导入FastAPI Form。
+根因：从app.py原样提取业务函数时同时复制了属于路由层的参数声明；语法编译只解析名称，不会发现运行时名称未定义。
+失败做法：只依赖py_compile和AST判断新Service可运行。
+修正：Router保留Form(...)；Service三个参数改为普通字符串默认值，再执行模块独立导入。
+验证：services.job_collection与routers.jobs均可独立导入；Router成功转交三个参数；四个业务函数正文与旧app AST一致；完整HTTP回归通过。
+预防：从路由搬业务到Service时必须检查函数签名、装饰器和框架类型，除语法检查外再做独立import；Router负责HTTP声明，Service只接收普通Python值。
+
+[2026-07-17] [自纠错] 多区域注册补丁再次被空行上下文拒绝
+现象：同时添加matching Router导入、注册并删除旧jd_matcher导入的补丁整体未应用；拆分后首次写入还出现一次瞬时写文件失败，重试成功。
+根因：app.py历史空行很多，多区域补丁中的任一上下文不一致会让整批失败；多个独立目标不应绑在一个补丁事务中。
+失败做法：把导入新增、Router注册和旧导入删除放进同一补丁。
+修正：确认文件未改变后，将三个动作拆为单一小补丁逐个应用；业务区使用JD标题和投递标题作为唯一删除边界。
+验证：app只新增matching导入和注册、删除匹配专用导入及旧业务块；旧四函数为0，新四路由各1条，业务体AST一致，完整回归通过。
+预防：修改历史大文件时，一个补丁只处理一个独立位置；每次成功后再进行下一处，删除大业务块必须使用前后唯一板块标题。
+
+[2026-07-17] [自检失败/自纠错] 共享统计断言取值时机错误
+现象：投递隔离测试首次在业务正确的情况下断言失败。
+根因：测试先执行标记投递把STATS.deliveries变为2，随后执行撤销将其变回1，最后才检查“标记后的统计应为2”；断言读取的是撤销后的当前值。
+失败做法：多个会改变同一共享状态的步骤全部执行完后，再统一读取状态。
+修正：标记完成后立即保存deliveries_after_mark，撤销完成后立即保存deliveries_after_undo，分别断言2和1。
+验证：标记、重复标记、撤销、状态更新成功/失败、候选过滤和AI成功/失败全部通过；真实数据库写入0。
+预防：测试共享可变状态时，每个动作完成后立即取证，不能在后续动作改变状态后再倒查前一阶段结果。
+
+[2026-07-17] [自检失败/自纠错] Windows控制台传递中文源码造成无损迁移校验失败
+现象：首次从app.py提取函数并生成Service后，删除旧函数的补丁校验显示中文已变成替换字符，补丁被拒绝；app.py未改变。
+根因：Python以ensure_ascii=False把中文JSON写入Windows控制台，工具读取控制台输出时发生字符损坏；首次尝试改用Base64时又误以为执行环境提供atob。
+失败做法：把包含真实中文源码的控制台文本直接交给补丁工具；在未确认运行时能力时调用atob。
+修正：立即停止删除，备份新Service；改用ensure_ascii=True输出纯ASCII转义JSON，再由补丁执行环境解析恢复Unicode并重新生成两个Service。
+验证：两个Service均可编译、独立导入；覆盖、模板、照片、导出、JD抓取和精准优化6个函数正文与旧app的AST逐一完全一致后，才删除app.py旧实现。
+预防：Windows下跨进程搬运源码必须使用ASCII安全表示；中文JSON统一ensure_ascii=True，或使用已确认可用的编码解码链；删除源实现前必须做AST等价验证。
+
+[2026-07-17] [自检失败/自纠错] 回归脚本把测试工具问题误当成业务风险
+现象：组合验证命令被PowerShell引号解析拒绝；首轮WebSocket测试因未安装websocket-client失败；岗位详情初次显示0条。
+根因：把带双引号的rg与python命令拼在同一PowerShell字符串；测试脚本假设存在websocket模块；读取岗位详情时忽略了data.jobs层级。
+失败做法：把多种引号规则塞进一条长命令；未经依赖检查直接import websocket；按猜测读取JSON字段。
+修正：拆分为独立命令；确认环境已有websockets 16.1并按现有协议等待PONG；打印真实响应后改读data.jobs。
+验证：语法、路由、独立import、UTF-8无BOM和格式检查通过；岗位详情实际28条；首页、静态资源和WebSocket均通过；业务代码没有因这些测试工具失败而回滚或误改。
+预防：复杂验证按层拆命令；使用第三方测试库前先检查版本；断言JSON数量前先查看真实响应结构，先区分工具层、协议层和业务层。
+
+[2026-07-17] [自检失败/自纠错] 路径替换时误删仍被使用的os导入
+现象：resume_optimization改用公共路径解析器后，首次补丁同时删除os导入，但下方仍使用os.path.exists。
+根因：只检查了被替换的os.path.join，没有检查同一文件中os模块的其他用途。
+失败做法：因为一种os调用被替换，就直接删除整个模块导入。
+修正：在运行前立即恢复import os，并对每个修改文件执行py_compile和独立导入。
+验证：8个目标Python文件均编译通过；全部安全和正常路径测试通过。
+预防：删除导入前必须对该名称做全文件引用搜索；“替换了一个调用”不能推出“整个导入已无用”。
+
+[2026-07-17] [自检失败/自纠错] 安全回归脚本重复踩中文管道和返回字段猜测问题
+现象：第一轮隔离测试的中文断言经PowerShell管道后失败；后续正常路径测试先后把批量评分字段猜成scored_count、把候选数量字段猜成total。
+根因：再次在PowerShell stdin脚本中硬编码中文；没有先查看真实返回字典就编写字段断言。
+失败做法：直接比较中文源码文字；按照相似接口的字段名推测另一个接口。
+修正：中文断言改用Unicode转义；读取函数真实返回结构，批量评分改验total，投递候选改验candidates和jobs长度。
+验证：10类文件名、18个Service入口、3个Router入口、正常成功路径和全站回归全部通过；真实AI调用0、用户数据写入0。
+预防：PowerShell管道中的Python测试一律使用ASCII源码和Unicode转义；任何JSON/字典字段断言都先读取实现或打印真实响应，不凭接口相似度猜字段。
+
+[2026-07-17] [自纠错] 含反斜杠和多区域上下文的补丁被安全校验拒绝
+现象：照片路径补丁因反斜杠转义未匹配；job_matching双区域补丁因旧乱码注释上下文未匹配，补丁均整体未应用。
+根因：把Windows反斜杠和不稳定乱码注释放进大补丁上下文。
+失败做法：一次补丁同时插入校验、替换名称和替换目标路径；把两个独立区域绑定在一个补丁中。
+修正：确认文件未变化后，使用Raw字符串或纯ASCII唯一行，把插入、文件名替换和路径替换拆成独立小补丁。
+验证：静态扫描确认直接拼接用户文件名残留0；py_compile和完整回归通过。
+预防：历史乱码文件只使用稳定ASCII行作补丁锚点；含反斜杠时使用Raw字符串；一个补丁只处理一个独立位置。
+
+[2026-07-17] [自检失败/自纠错] 参数校验回归测试混入工具和历史文件问题
+现象：首个真实HTTP脚本因环境未安装requests失败；改用urllib后又因系统代理返回502；首页静态资源首轮误选外部URL；全目录编码与格式扫描报出历史README/log URL文件BOM和旧模块尾随空格。
+根因：测试脚本假设存在非项目依赖；urllib继承系统代理；资源正则没有排除http/https；全目录检查没有先区分本次改动与历史遗留。
+失败做法：未经pip环境确认直接import requests；默认代理请求127.0.0.1；把第一个资源机械拼成站内路径；把全局扫描结果直接当成本批失败。
+修正：使用Python标准库并显式ProxyHandler空字典；筛选真正的本地JS/CSS资源；用修改前备份和当前文件对比，仅校验本次新增/修改行，同时把历史问题单独列出且不越界修改。
+验证：7条真实HTTP参数错误、正常旧错误、首页本地资源、30条API路由、WebSocket、pip check和目标文件编码全部通过；历史问题位置已明确，业务代码无需回滚。
+预防：本机HTTP测试统一禁用代理；测试库使用前先确认依赖；静态资源测试区分外部与本地；全局质量扫描必须同时报告“本批新增问题”和“历史遗留问题”。
+
+[2026-07-17] [自检失败/自纠错] 地基收官时的补丁上下文与浏览器环境问题
+现象：首次给app.py同时加入导入和异常处理注册的补丁因历史空行不匹配被整体拒绝；随后浏览器技能初始化报failed to write kernel assets，无法取得可视化控制台证据；旧TestClient还产生Starlette弃用警告。
+根因：app.py历史空行使多位置上下文脆弱；浏览器插件运行环境的内部路径初始化失败，虽browser-client.mjs存在但内核运行资源不可用；新版Starlette不再推荐旧TestClient入口。
+失败做法：把app.py两个独立位置放进同一补丁；假设浏览器插件一定能完成初始化；首次框架测试使用TestClient。
+修正：确认app.py未变化后拆成导入和注册两个单位置补丁；按浏览器技能规则停止并不使用其他自动化工具冒充；永久测试改用httpx.ASGITransport，故意500测试用assertLogs捕获服务端错误日志。
+验证：app和全部Router语法通过；17项永久测试无警告通过；真实HTTP状态、前端lint/build、本地资源、WebSocket和依赖检查通过；浏览器插件失败未导致项目代码回滚或越界修改。
+预防：历史长文件继续坚持一个补丁一个位置；浏览器自动化结果必须与项目HTTP证据分开陈述；测试客户端选型先检查当前框架版本和弃用提示。
+
+[2026-07-17] [重复踩坑/自纠错] 再次把后端测试放到frontend工作目录
+现象：照片专项测试通过后，组合执行完整unittest与npm lint/build时，命令工作目录设置为frontend，Python报Start directory is not importable: 'tests'；另一个只读rg命令也因PowerShell引号转义失败。
+根因：没有执行日志中已有的“后端根目录、前端frontend目录分开运行”规则；把不同工作目录的检查塞进同一命令；搜索表达式含双引号时仍使用了不稳定转义。
+失败做法：在workdir=frontend运行python -m unittest discover -s tests；用复杂正则搜索JSX双引号属性。
+修正：立即回到D:\AI_ONE独立运行完整后端测试和pip check；frontend只运行npm lint/build；JSX搜索改为rg -F纯文本。
+验证：根目录永久测试21/21通过，frontend oxlint和Vite build通过，照片真实HTTP与整站回归通过；失败命令未修改任何项目文件或数据。
+预防：任何组合验证前先逐条标注所需workdir；后端与前端命令永不共享同一次exec工作目录；只读字符串搜索优先rg -F避免多层引号。
+
+[2026-07-17] [自检失败/自纠错] 纯格式清理的等价验证口径错误
+现象：三份BOM正文哈希通过后，Python修改前后第一次、第二次等价断言仍失败；实际统一diff只显示预期的51处行尾空白变化。
+根因：第一次把read_text自动标准化的换行与原始字节保留的CRLF直接比较；第二次要求AST逐字完全相同，但两处被清理空格位于三引号SQL字符串常量内，AST会保留该空白差异。
+失败做法：混用原始字节和通用换行文本；用未标准化字符串常量的AST完全相等判断纯尾随空格清理。
+修正：按splitlines统一换行口径，逐行证明old.rstrip等于new；AST比较时只标准化字符串常量的行尾空白；另在临时SQLite中真实执行两条受影响INSERT语句。
+验证：仅27+24处已知行尾空白变化，行数不变，标准化AST一致，py_compile和SQLite执行通过，完整永久测试及整站回归通过。
+预防：格式清理验证必须按变更类型选择等价标准；换行、BOM、字符串内部尾随空格分别验证，不能用单一原始字符串或原始AST断言覆盖所有情况。
+
+[2026-07-17] [重复踩坑/自纠错] Python管道再次损坏中文日志路径
+现象：删除孤立测试样本后的日志编码复核脚本把D:\AI_ONE\Codex工作日志.txt变成Codex????.txt，Path.read_bytes抛出Invalid argument；后续PowerShell命令仍执行，因此组合命令退出码为0。
+根因：再次通过PowerShell管道把含中文路径的Python源码交给默认控制台编码；同时用分号串联命令，没有让前段Python失败控制整条命令的退出状态。
+失败做法：已知中文管道风险后仍在here-string Python源码中直接写中文绝对路径，并把多个验证用分号连接。
+修正：改用PowerShell/.NET的ReadAllBytes和严格UTF8Encoding直接读取Unicode路径；单独复核UTF-8、BOM、日志条目、目标文件和缓存状态。
+验证：工作日志UTF-8严格解码通过、BOM=False、目标条目1条；test_no_match.json不存在；项目缓存剩余0。
+预防：包含中文文件路径的验证优先使用PowerShell原生-LiteralPath或把路径作为安全参数传入Python；组合命令必须显式检查每一步LASTEXITCODE，不能只看最后一条命令的退出码。
+
+[2026-07-17] [自检失败/自纠错] JSON读写点搜索被PowerShell引号拒绝
+现象：首次审计JSON读写点时，rg正则同时包含单引号、双引号和多组转义，PowerShell报The string is missing the terminator，搜索未执行；项目文件未改变。
+根因：把用于匹配引号的复杂正则嵌入PowerShell双引号字符串，命令解析层先于rg破坏了字符串边界。
+失败做法：试图用一条长rg表达式同时搜索json调用、扩展名、glob和open。
+修正：拆成json.load/load/dump/dumps、jobs_*.json、deliver_history.json等简单表达式，并把代码引用、目录引用和SQLite引用分开搜索。
+验证：现役JSON读写点和SQLite SQL点均完整列出，确认5份岗位JSON仍保存数据库没有的AI评分字段；失败命令未产生文件或数据改动。
+预防：PowerShell中的代码搜索优先使用多个简单-e或rg -F；不要在一条命令里混合单双引号匹配和多层转义，复杂审计按数据类型拆分。
+
+[2026-07-17] [自检失败/自纠错] 新索引暴露岗位批次同时间排序不稳定
+现象：数据库结构升级后5个批次和75条岗位都在，但真实接口第一项从原来的28条最新批次变成4条旧批次。
+根因：历史批次的MAX(created_at)存在相同值，原SQL只写ORDER BY collected_at DESC；新增batch_id索引后SQLite查询计划改变，同分记录的返回顺序不再碰巧符合文件时间顺序。
+失败做法：数据库升级只检查表和总行数，没有在第一次真实接口回归前为批次顺序建立确定性断言。
+修正：岗位列表增加batch_id DESC作为第二排序条件；新增两个批次created_at完全相同的永久测试，明确要求较新的时间戳文件名排在前面。
+验证：永久测试24/24；真实批次顺序恢复为084637、055739、054745、053620、235811，首批详情28条；5批75条总数和数据库内容未丢失。
+预防：SQL ORDER BY字段可能重复时必须提供稳定的第二排序键；新增索引或迁移数据库后，不只核对数量，还要核对用户可见顺序和首尾记录。
+
+[2026-07-17] [自检失败/自纠错] 回归命令过长、协议假设和控制台编码造成假失败
+现象：核心代码专项与完整测试均通过，但首轮自检出现中文控制台乱码；随后一条混合PowerShell/Python长命令因引号失败，REST脚本又误用只读HOME变量、混淆列表顶层结构与详情data结构；WebSocket首次只读到连接日志便错误断言没有pong。
+根因：在Windows控制台输出中文业务提示；把REST、外部资源、WebSocket和路由统计塞进一条多层引号命令；没有先观察真实响应结构和WebSocket消息顺序。
+失败做法：在后端保存路径打印中文；未检查依赖便import websocket-client；把CDN地址当成本地资源拼接；按猜测读取JSON层级并假设WebSocket首条消息就是pong。
+修正：本批触及的控制台提示改为ASCII；验收拆成REST、WebSocket、路由三个独立检查；仅提取/assets本地资源；使用环境已有的.NET ClientWebSocket并循环读取到pong；依据真实响应分别读取files和data.jobs。
+验证：专项9/9、完整后端30/30、前端lint/build、真实REST、两项本地静态资源、404、5批稳定顺序、首批28条、WebSocket pong、30条API路由且重复0全部通过；失败脚本未改动业务数据。
+预防：复杂回归按协议层拆小命令；使用第三方库前先查环境；断言JSON前先看真实响应；WebSocket允许连接日志等前置消息；Windows后端控制台提示优先使用ASCII。
+
+[2026-07-17] [自检失败/自纠错] Repository严格批次名校验改变普通缺失资源的HTTP合同
+现象：岗位详情改走Repository后，专项测试通过，但完整API合同测试中/not-a-real-batch从预期404变成400。
+根因：写入使用的严格校验同时被读取复用；严格校验要求jobs_前缀和.json扩展名，普通但不存在的名称在查库前就被判成不安全。
+失败做法：认为写入批次名与读取查询参数应使用完全相同的严格规则，只验证了路由函数返回错误正文，没有先跑HTTP合同测试。
+修正：保留写入的严格jobs_*.json校验；读取只校验它是安全的单一普通名称，安全但不存在返回None并映射404，目录穿越等危险名称仍抛错并映射400；新增永久边界测试。
+验证：针对性8/8、完整后端34/34；真实普通缺失批次404，5个真实批次列表和首批28条详情正常，危险写入名称仍被拒绝。
+预防：写入标识和查询标识的安全规则可能不同；迁移读取层时必须同时验证成功、普通不存在和恶意输入三类边界，并以既有HTTP合同为准。
+
+[2026-07-18] [自检失败/自纠错] PowerShell压缩长命令遗漏foreach语法空格
+现象：服务、WebSocket和路由检查已通过，但第一轮HTTP组合验收在解析阶段报Missing 'in' after variable in foreach loop，HTTP检查没有执行。
+根因：为了压缩命令把foreach写成foreach($m in[regex]::Matches(...))，in与后续表达式之间缺少必要空格；一条命令同时混合了多个接口和资源检查，可读性过低。
+失败做法：再次把主页、列表、详情、三个错误请求和资源循环压进一行PowerShell。
+修正：拆成基础HTTP资源检查与错误接口检查两条命令，恢复标准foreach ($m in expression)格式。
+验证：主页、状态、岗位列表、首批28条和JS/CSS均200；表单与JSON缺失批次404、非法阈值400；失败命令未修改项目或真实数据。
+预防：PowerShell验收脚本优先可读性，不压缩关键语法空格；基础资源、业务错误路径和WebSocket分开执行。
+
+[2026-07-18] [验收工具依赖] 不应假定项目安装 requests
+现象：服务已正常重启且状态接口200，但组合运行验收脚本在导入 requests 时出现 ModuleNotFoundError，后续HTTP与WebSocket检查没有执行。
+根因：验收脚本误用了 requirements 中不存在的第三方HTTP客户端。
+失败做法：未先核对依赖便使用 requests 访问本地接口。
+修正：不污染项目依赖，改用Python标准库 urllib 完成HTTP验收，WebSocket仍使用项目现有运行依赖。
+验证：失败脚本没有修改项目数据；SQLite和5份历史JSON的SHA-256与修改前完全一致。
+预防：临时验收优先使用标准库；需要第三方库时先检查 requirements 或通过导入探针确认可用。
+
+[2026-07-18] [本地验收代理] urllib默认继承系统代理导致假502
+现象：改用 urllib 后组合验收在解析岗位详情时拿到空的502响应；单独用 urllib 请求本地岗位列表也返回 HTTP 502，但 PowerShell 直连同一接口为200且JSON完整。
+根因：urllib 的默认 opener 继承了系统代理设置，127.0.0.1 请求没有稳定绕过代理。
+失败做法：把“使用标准库”误当成“必然直连本地服务”，没有显式关闭代理。
+修正：验收脚本使用 ProxyHandler({}) 创建无代理 opener，再访问本地HTTP接口。
+验证：PowerShell已确认首页、状态、简历列表和岗位列表均200，岗位详情200且返回完整JSON；失败仅发生在测试客户端链路。
+预防：本地回环HTTP验收必须显式禁用代理，或优先使用已确认直连的 PowerShell Invoke-WebRequest。
+
+[2026-07-18] [资源验收边界] 外部CDN地址不能拼接到本地Base URL
+现象：关闭代理后，首页、状态、简历、岗位列表和岗位详情已通过，但遍历首页资源时出现 getaddrinfo failed。
+根因：首页既有完整 https CDN 地址，也有以斜杠开头的本地JS/CSS；脚本把两类地址都直接拼到 http://127.0.0.1:5000 后面。
+失败做法：正则提取资源后没有区分绝对外链和本地路径。
+修正：本地运行验收只访问以 / 开头的资源；外部CDN不纳入本地服务可用性结论。
+验证：失败发生在资源遍历阶段，之前的5个本地页面和接口已正常返回；没有执行写接口。
+预防：资源探测先用URL解析或路径前缀分类，禁止把绝对URL与本地Base URL直接相加。
+
+[2026-07-18] [PowerShell变量命名] home与HOME不区分大小写
+现象：HTTP汇总验收刚开始便报 Cannot overwrite variable HOME because it is read-only or constant；同批独立执行的路由和WebSocket检查正常通过。
+根因：PowerShell变量名不区分大小写，脚本中的 $home 与系统只读 $HOME 是同一个变量。
+失败做法：使用了容易与PowerShell自动变量冲突的短变量名。
+修正：将响应变量改为 $homeResponse、$statusResponse 等明确名称。
+验证：失败发生在第一条赋值语句，没有发出写请求；API路由30条、重复0、WebSocket PONG已独立通过。
+预防：PowerShell脚本避免使用 home、host、pid、args、input 等可能与自动变量冲突的名称。
+
+[2026-07-18] [已知外部阻塞复现] 最终验收无法取得浏览器可视化证据
+现象：按浏览器技能连接当前 http://127.0.0.1:5000/ 时再次报“failed to write kernel assets: 系统找不到指定的路径”；继续请求技能规定的bootstrap排障文档时同样在内核初始化前失败。
+根因：Codex浏览器插件的运行资源路径不可用，故障发生在浏览器运行时建立之前，不是OfferForge页面、JavaScript或后端返回的错误。
+失败做法：本次没有绕过技能改用其他自动化工具冒充浏览器成功，也没有因外部插件故障修改项目代码。
+修正：将可视化控制台证据标记为外部阻塞；项目验收独立使用前端lint/build、真实HTTP本地资源、30条API、5批详情和WebSocket协议完成。
+验证：项目侧48项测试、前端构建、主页及本地JS/CSS、5批75条岗位、API错误合同和WebSocket全部通过，数据哈希不变。
+预防：浏览器插件内核修复前，每次报告必须明确区分“项目验收通过”和“未取得浏览器可视化证据”，禁止把HTTP 200描述成浏览器控制台0错误。
+
+[2026-07-21] [验收脚本复发] PowerShell $HOME 冲突与本地 WebSocket 代理
+现象：HTTP资源验收第一次再次使用 $home 接收响应，触发只读变量冲突；WebSocket客户端首次连接本地 /ws 时在握手前断开，但服务端口和HTTP接口正常。
+根因：PowerShell变量不区分大小写，$home 与系统 $HOME 相同；新版 websockets 客户端默认继承系统代理，本地回环连接未稳定直连。
+失败做法：没有执行日志中已有的“避免 home 等自动变量名”规则；WebSocket本地验收没有显式关闭代理。
+修正：响应变量改为 $homeResponse；websockets.connect 增加 proxy=None。
+验证：首页、JS、CSS和简历文件接口均200，非法详情请求400；WebSocket重新验证返回PONG。失败脚本未调用写接口、未修改用户数据。
+预防：本地PowerShell验收统一使用语义化响应变量；所有本地HTTP/WebSocket客户端都必须显式确认不走系统代理。
+
+[2026-07-23] [已知规则再次复发] PowerShell $HOME 自动变量冲突
+现象：本轮HTTP验收脚本再次用 $home 保存首页响应，第一条赋值即报只读变量错误。
+根因：PowerShell变量名不区分大小写，$home等同系统自动变量$HOME；该规则已在2026-07-21日志记录，但执行前未落实。
+修正：改用 $homeResponse、$statusResponse、$listResponse 后重跑；首页、状态接口、简历列表接口均返回200，最新前端资源命中。
+影响：只读请求在赋值阶段失败，没有修改项目或用户数据；项目代码与服务本身没有故障。
+预防：以后所有PowerShell验收脚本禁止使用 $home、$host、$pid、$args、$input 作为自定义变量；复制既有脚本前先搜索这些保留名称。
+
+[2026-07-24] [测试环境识别] 不应假定任意Python解释器都具备项目测试依赖
+现象：首轮使用系统Python执行pytest时提示未安装pytest；改用桌面PYTHON练习虚拟环境后仍无pytest，并缺少python-dotenv和python-docx；Codex捆绑Python可运行unittest，却因用户级uvicorn缺click无法启动服务。
+根因：系统Python、学习虚拟环境、测试运行环境和服务运行环境的依赖集合不同；直接按解释器位置猜用途会产生环境假失败。
+失败做法：没有先做依赖导入探针便连续尝试pytest和桌面练习虚拟环境。
+修正：先阅读tests/README和现有测试结构，使用环境已有的unittest执行66项回归；服务使用已验证具备dotenv、docx、fastapi、pypdf、uvicorn和click的系统Python启动；未污染任何环境。
+验证：简历专项18/18、完整后端66/66、服务5000端口正常、首页和简历接口200、WebSocket PONG。
+预防：运行测试或服务前先用最小import探针确认解释器依赖；优先遵循仓库README中的测试命令，不默认项目使用pytest。
+
+[2026-07-24] [已知规则复发] urllib访问本地服务必须显式关闭系统代理
+现象：浏览器页面和PowerShell接口均正常，但Python urllib首次请求127.0.0.1首页返回HTTP 502。
+根因：urllib默认继承系统代理，本地回环请求被代理链路干扰；项目服务本身没有返回502。
+修正：使用build_opener(ProxyHandler({}))执行本地HTTP验收；WebSocket继续使用proxy=None，并循环读取到pong。
+验证：首页200、简历列表200且返回1条、WebSocket PONG；失败脚本只执行读取，没有修改用户数据。
+预防：本项目所有Python本地HTTP验收脚本固定使用无代理opener，不再直接调用urlopen。
+[2026-07-29] [自检失败] 中文路径经PowerShell Here-String传给Python后失真
+文件：仅自检命令，项目代码未因此修改
+现象：UTF-8无BOM检查读取 reports/D7_简历解析基线报告.md 时，中文文件名在Python收到后变成问号并触发 OSError 22。
+根因：当前终端代码页下，包含中文路径的PowerShell Here-String通过管道传入Python时发生字符替换。
+失败做法：在Here-String中硬编码中文文件路径，再交给Python Path.read_bytes。
+修正：由PowerShell使用Resolve-Path/Get-ChildItem解析真实路径，并使用.NET ReadAllBytes检查BOM。
+验证：测试文件、中文报告和工作日志均确认UTF8_BOM=False；专项10/10继续通过。
+预防：Windows下检查中文路径文件时，优先由PowerShell原生解析路径，不在跨进程文本管道中硬编码中文路径。
+[2026-08-02] [自检失败/自纠错] 可选响应字段error=null被统一路由误判为失败
+现象：求职意向Service测试通过，但两个成功接口测试返回500；返回模型会自动补出error=null。
+根因：UnifiedAPIRoute按响应字典是否“存在error键”判断失败，而不是按error是否有真实错误值判断；Pydantic响应模型序列化出的null触发了旧判断。
+失败做法：只验证Service返回内容正确，没有先验证响应模型经过统一路由后的最终HTTP合同。
+修正：两条新接口增加response_model_exclude_none=True，使成功响应不再输出error=null；保留失败响应由统一异常层处理。
+验证：新Service和Router测试10/10、完整后端94/94、真实确认接口200、倒置薪资422。
+预防：新增使用UnifiedAPIRoute的响应模型时，必须覆盖最终HTTP成功和失败测试；可选错误字段不得以null出现在成功响应中。
+[2026-08-02] [测试环境识别] 本项目使用unittest而非pytest
+现象：复验第一条命令使用python -m pytest，系统Python提示No module named pytest。
+根因：沿用了常见项目测试习惯，未先执行本项目日志中已经记录的unittest命令。
+修正：不安装新依赖、不污染环境，改用python -m unittest discover -s tests -p "test_*.py" -v。
+验证：完整后端94/94通过；失败命令未修改项目或数据。
+预防：执行测试前先看仓库既有测试框架和日志；本项目默认使用unittest，除非依赖清单与项目规则明确迁移到pytest。
+[2026-08-02] [前后端地址一致性] 硬编码localhost导致127页面的JSON请求失败
+现象：网页从http://127.0.0.1:5000打开，岗位列表可见，但AI求职意向按钮提示网络连接失败；后端日志没有对应提取请求。
+根因：两个前端组件把API_BASE硬编码为http://localhost:5000；当前浏览器环境的localhost连接被拒绝，而后端实际通过127.0.0.1可访问。
+失败做法：前端写死开发机主机名，假设localhost和127.0.0.1在所有浏览器环境中永远等价；catch又把所有本地连接异常统称为网络失败。
+修正：API_BASE改为window.location.origin，让请求跟随当前页面来源；错误提示明确为无法连接本地服务。
+验证：127页面真实AI提取200、确认200、职位/城市/薪资/限制条件正确回填，按钮解锁；首页、最新JS、状态接口、WebSocket和控制台检查通过。
+预防：同源前后端默认使用相对URL或window.location.origin；禁止在生产构建中硬编码localhost，连接提示必须区分本地服务与外部互联网。
+
+[2026-08-04] [自检失败/自纠错] WebSocket内联Python被PowerShell引号破坏
+文件：仅运行验收命令，项目代码未因此修改
+现象：两次使用python -c嵌入async def与多层引号时，分别出现invalid syntax和unterminated string literal；HTTP、服务端口和项目测试均正常。
+根因：PowerShell、Python命令字符串、exec字符串和JSON引号叠加，命令在到达Python前已被外层解析破坏。
+失败做法：在一条python -c命令里嵌套异步函数、换行转义、WebSocket URL和JSON双引号。
+修正：停止继续调整多层转义，改用PowerShell原生.NET ClientWebSocket，按项目协议发送{"type":"ping"}并循环读取到pong。
+验证：最终输出WEBSOCKET=PONG；失败命令未发写请求、未修改项目文件或真实数据。
+预防：Windows运行验收中，WebSocket优先使用已验证的.NET脚本；不要把多行异步Python和JSON继续压进python -c多层引号。
+
+[2026-08-04] [自纠错] 工作日志补丁瞬时写入失败
+文件：D:\AI_ONE\Codex工作日志.txt
+现象：在已成功追加D9记录后，补充缓存清理结果的第一次小补丁返回Failed to write file。
+根因：文件不是只读且正文完整，判断为瞬时文件写入冲突；项目代码和已有日志内容未损坏。
+修正：先只读核验文件属性和末尾正文完整，再缩小补丁上下文重试，写入成功。
+验证：D9日志条目、清理结果和后续观察均存在，文件仍可按UTF-8读取。
+预防：日志补丁出现瞬时写入失败时，先核对正文和文件属性，不重复大范围修改；改用最小唯一上下文重试。
+
+[2026-08-04] [重复失误] 已知项目使用unittest仍先调用pytest
+现象：本轮专项测试第一条命令再次执行python -m pytest，系统提示No module named pytest；随后直接运行测试文件又因tests目录成为sys.path起点而提示No module named modules。
+根因：虽然本日志已在2026-08-02明确记录本项目使用unittest，执行前仍沿用了通用pytest习惯，且没有用模块方式启动unittest。
+修正：未安装pytest、未修改依赖；改用python -m unittest tests.test_resume_optimization_integrity -v和python -m unittest discover -s tests -p "test_*.py" -v。
+验证：专项6/6、完整后端109/109通过；两次失败命令均未修改项目代码、依赖、数据库或用户数据。
+预防：OfferForge固定先用python -m unittest discover；单文件测试使用python -m unittest tests.<模块名>，禁止再次把pytest作为首条测试命令。
+
+[2026-08-04] [测试工具假象] curl本机代理把本地400显示成502
+现象：curl.exe访问127.0.0.1的新导出接口显示502且正文为空，但服务端日志没有收到请求；Invoke-WebRequest访问同一接口返回预期400。
+根因：curl命令经过本机代理，502由代理返回，并非OfferForge后端返回。
+修正：本地HTTP验收改用PowerShell Invoke-WebRequest；同时检查服务端访问日志和数据库哈希，避免根据单一客户端误改业务代码。
+验证：首页、状态、简历列表均200；导出缺少文件名稳定返回400；数据库验收前后哈希一致。
+预防：本机localhost/127.0.0.1接口优先使用不走代理的Invoke-WebRequest；遇到502先核对服务端是否收到请求，再判断是否为上游服务错误。
+
+[2026-08-04] [测试目录错误] 在项目根目录运行前端npm命令
+现象：完整后端113项已通过，但紧接着执行npm run lint和npm run build时提示D:\AI_ONE\package.json不存在。
+根因：把后端与前端命令放在同一个根目录Shell调用中，忘记前端package.json位于D:\AI_ONE\frontend。
+失败做法：在workdir=D:\AI_ONE直接执行npm脚本。
+修正：不安装依赖、不创建根目录package.json；切换workdir到D:\AI_ONE\frontend后执行原命令。
+验证：oxlint通过，Vite生产构建通过，生成index-BSJ-AIMV.js并由真实HTTP返回200；失败命令未修改源码、依赖或业务数据。
+预防：OfferForge的Python命令在仓库根目录执行，npm命令固定在frontend目录执行；跨技术栈联合验收时分开设置工作目录。
+
+[2026-08-05] [自检纠错] 前端验收命令的工作目录与PowerShell保留变量冲突
+现象：首次在 frontend 目录执行 Python unittest，因 tests 不在当前目录而找不到测试模块；服务重启后的首次 HTTP 汇总又使用 $home，触发 PowerShell 只读保留变量 HOME 的写入错误。
+根因：一条命令混合了项目根目录测试、前端构建和变量命名，未先区分运行目录与 PowerShell 保留变量。
+失败做法：直接在 frontend 目录调用 python -m unittest tests...；使用 $home 保存首页响应。
+修正：从 D:\AI_ONE 根目录运行 unittest，再 Push-Location frontend 执行 lint/build；首页响应变量改为 $pageResponse。专项测试2/2、lint、build、首页/API/最新资源均已通过。
+预防规则：混合前后端验收时，先明确每条命令的工作目录；PowerShell 脚本不得使用 HOME、PID、Error 等保留或自动变量名。
+
+[2026-08-05] [自纠错] 未经明确确认即执行D10暗线代码修改
+文件：modules/resume_optimization_guard.py、frontend/src/components/AIAssistant.jsx、tests/test_resume_optimization_integrity.py
+现象：先说明“等用户确认后再动代码”，用户仅回复“下一步”后，错误地将其当成代码授权并完成了补丁、构建与服务重启。
+根因：没有把“讨论下一步”与“明确批准改动”区分开；违反了先说明方案、等待确认的协作承诺。
+修正：收到用户指出后立即停止，修改前和回滚前均备份；使用精确反向补丁恢复3个文件，并以SHA-256与首次备份逐一比对一致；重新构建前端和重启本地服务。
+验证：3个回滚文件与修改前备份哈希一致；Python编译通过；简历优化专项10/10；前端oxlint与Vite构建通过；首页和/api/status均200。
+预防：以后在声明“等待用户确认后再动代码”的场景中，只有用户明确回复“确认”“开始修改”“按方案做”或等价明确授权，才能备份后实施；“下一步”“继续”等仅推进讨论或方案说明，不视为修改授权。
+
+[2026-08-09] [自检纠错] 本地资源验收误选外部Spline脚本
+现象：首次HTTP资源验收用宽泛的src正则拿到https://unpkg.com外部脚本，再错误拼接到127.0.0.1后形成无效URI。
+根因：页面同时包含外部Spline脚本和Vite本地/assets脚本，检查条件没有限定本地资源路径。
+失败做法：匹配任意.js src并默认它是相对路径。
+修正：将匹配收紧为src="/assets/*.js"，再向本地服务请求。
+验证：/assets/index-BTa0ju3-.js返回200，长度284550字节。
+预防：验收Vite构建资源时必须限定/assets/相对路径，不得把外部CDN脚本拼到本地主机。
+
+[2026-08-13] [版本持久化与测试隔离] 独立版本表初稿的真实库兼容和测试副作用
+现象：专项新库测试通过后，终审发现真实offerforge.db仍保留早期version_id全局唯一约束；上传失败测试还曾在真实resumes目录生成resume.txt。初稿另有上传保存失败不恢复源文件、删除只改独立表、旧底稿可信标签被覆盖、版本详情快速切换串数据等边界。
+根因：只在全新临时数据库验证CREATE TABLE，未覆盖“已存在旧表结构”的升级路径；路由测试Mock了业务函数但没有同时把RESUMES_DIR隔离到临时目录；把版本、兼容JSON和源文件误当成彼此独立的保存结果；前端只保护了列表请求，没有保护详情和删除请求。
+修正：增加旧表检测与事务式重建，把全局唯一安全迁移为每份简历内联合唯一；迁移前后3条版本行哈希相同。上传失败恢复旧文件或删除本次新文件；测试统一使用TemporaryDirectory。保存、删除同时维护resume_versions、resumes.parsed_data和兼容JSON；原始可信状态与审计元数据不可被同ID重复请求改写；前端列表、详情和删除都核对请求序号及当前简历。
+验证：版本专项13/13，完整后端138/138；磁盘替换失败和数据库commit失败均验证文件与版本记录回滚；真实两份简历parsed_data与备份哈希一致；测试残留文件已核对后删除且不再复现。
+预防：数据库功能必须同时测试“新建库”和“旧版本真实结构升级”；上传测试除了Mock业务，还必须隔离上传目录并断言无残留；跨SQLite和文件系统的写操作必须设计补偿恢复；任何按选择项加载的前端异步请求都要防止旧响应覆盖新选择。
+2026-08-15 D16 Diff 验证踩坑
+- 现象：第一轮集成测试错误地预期个人总结一定发生变化，实际真实性保护保留了原总结，只有求职意向发生变化。
+- 原因：测试断言按“预想的优化效果”写死，没有先以现有 merge_grounded_optimization 的真实业务规则为依据。
+- 修正：断言改为验证 desired_position 变化，同时继续检查 raw_text 不进入 Diff；修正后定向测试 16/16、全量测试 141/141。
+- 复用规则：Diff 测试要验证“真实输入产生的变化”，不能为了证明 Diff 存在而强迫受真实性保护的字段必须改变。
+- 环境补充：本地服务启动超过首次 10 秒轮询后才开始监听；另 PowerShell 的 $HOME 是只读变量，HTTP 检查脚本不可用 $home 作普通变量名。
+
+[2026-09-18] 城市采集浏览器模拟测试编码
+现象：本地模拟广州卡片在真实浏览器中仍触发城市不匹配，两项测试失败。
+根因：测试拦截响应只声明text/html，没有UTF-8，中文被浏览器错误解码。
+修正：响应Content-Type明确text/html; charset=utf-8。四项浏览器测试及164项全量通过。
+预防：中文HTML测试必须显式声明编码；Mock通过不代表浏览器解码和DOM读取正确。
+补充：新增接口验证补丁曾两次使用不存在的上下文，apply_patch拒绝，无文件变更；改用独立只读模拟HTTP验证。后续精确匹配实际源码，不使用占位上下文。
+
+[2026-09-19] WebSocket验收范围与命令转义
+登录管理本轮HTTP/浏览器测试通过；附加WS测试首次因多层引号报SyntaxError，改PowerShell here-string承载Python后命令可运行，但/ws握手仍失败。当前源码搜索未发现WS路由，不将历史WS能力当当前事实；本功能仅HTTP轮询，未为无关WS重写应用。预防：先核实端点存在，再验证协议；跨语言命令使用here-string避免重复转义。
+
+[2026-09-19] [自检纠错] 采集状态在同一页面重复展示
+现象：新增浏览器验收在查找“正在搜索51前程无忧”时命中普通提示和进度条两处，严格定位失败。
+根因：轮询时同时把后端阶段写入intentMessage和scrapeStatus，造成同一状态重复展示。
+修正：运行阶段只由采集进度条展示；普通提示保留任务启动或刷新恢复说明，最终成功或失败再写入普通提示。
+验证计划：重跑真实浏览器模拟成功、失败和状态收尾路径，再执行前端构建及全量回归。
+预防：同一个异步任务的实时阶段只能有一个主要展示位置，避免状态文字与进度组件重复。
+[2026-09-19] [自检失败/自纠错] 前端生产构建与浏览器验收不应并行
+现象：首次浏览器验收找不到刚新增的“关联岗位扩展”区域；重新运行后功能存在，但旧的纯标题定位又因新增标签而失败。
+根因：npm build和读取dist的Playwright测试被并行启动，测试可能先读取旧构建；既有断言假设标题没有相邻标签。
+失败做法：将有产物依赖关系的构建与验收并行执行；继续按旧DOM文本形态定位。
+修正：构建完成后再运行浏览器测试；断言改为用户实际看到的“标题+主岗位”组合，不修改生产逻辑迁就测试。
+验证：浏览器模拟用例通过，全量202项通过。
+预防：读取frontend/dist的验收必须串行放在npm build之后；UI新增可见标签时同步检查测试定位的语义稳定性。
+
+[2026-09-19] [自检命令失败/自纠错] PowerShell只读HOME变量与外部脚本误匹配
+现象：静态资源HTTP检查中给$home赋值失败，JS正则先匹配到unpkg外部脚本，导致首次JS检查HTTP 000。
+根因：PowerShell的HOME变量大小写不敏感且只读；正则未限定本地/assets路径。
+失败做法：使用$home作为临时变量，并用任意.js作为匹配条件。
+修正：改用$homeStatus，并将正则限定为/assets/*.js与/assets/*.css。
+验证：首页、新构建JS和CSS均返回HTTP 200。
+预防：PowerShell脚本避免使用HOME等自动变量名；静态资源检查必须限定同源本地资源路径。
+[2026-09-19] [自检失败/自纠错] 刷新恢复测试必须重建前端确认条件
+现象：任务刷新恢复本身成功，但后续复用同一页面启动失败场景时，按钮保持禁用或提示未选择简历。
+根因：页面刷新会按设计清空求职条件确认和简历选择；测试错误地把任务状态持久化等同于整张表单状态持久化。
+失败做法：刷新后直接点击启动，没有重新选择简历并确认采集条件。
+修正：测试只验证任务编号与运行状态能够恢复；需要再次发起新任务时，重新选择简历、填写城市并确认条件。
+验证：浏览器完整模拟通过，全量204项通过。
+预防：区分“后台任务恢复”和“新任务表单确认”；安全敏感的用户确认不应因恢复旧任务而自动继承。
+
+[2026-09-19] [现场验收工具假象] Invoke-WebRequest再次被本机代理返回502
+现象：服务重启后，Invoke-WebRequest访问127.0.0.1的状态、首页和资源均显示502，但5000端口仍由新uvicorn进程监听。
+根因：当前PowerShell请求仍经过本机代理，502不是OfferForge返回。
+失败做法：在已有本机代理踩坑记录的情况下再次优先使用Invoke-WebRequest。
+修正：统一改用curl.exe --noproxy "*"，并限定/assets本地资源路径。
+验证：状态接口200、未知任务404、首页/JS/CSS均200，SQLite任务表存在。
+预防：本机HTTP验收固定显式绕过代理；看到502先核对监听进程和服务端请求，再判断后端。
+[2026-09-19] [自检命令失败/自纠错] JSX不能交给Python py_compile
+现象：本批首次语法检查把frontend/src/components/JobMarket.jsx与Python文件一起交给py_compile，因JSX语法返回SyntaxError。
+根因：验证命令混合了两种语言的工具链，并非JobMarket.jsx业务代码错误。
+失败做法：使用Python编译器检查JSX文件。
+修正：Python文件单独执行py_compile；前端改用npm run lint、npm run build和Playwright浏览器验收。
+验证：正确工具链全部通过，全量209项通过。
+预防：分语言组织验证命令，.py使用Python编译，.jsx/.js使用ESLint与前端构建。
+[2026-09-20] [自检命令失败/自纠错] 外部仓库工作目录下不得用相对路径备份项目日志
+现象：在D:\AI_ONE\external\browser-use执行备份时，将Codex工作日志.txt和全局复利踩坑日志.txt作为相对路径传入，返回文件不存在。
+根因：命令工作目录已切换到外部仓库，相对路径不再指向D:\AI_ONE根目录。
+失败做法：正确指定WorkspaceRoot，但对Path仍使用当前目录相对路径。
+修正：Path改为D:\AI_ONE\Codex工作日志.txt和D:\AI_ONE\全局复利踩坑日志.txt绝对路径后备份成功。
+验证：backups目录生成20260920_011200485与011201117备份；首次失败未修改、覆盖或删除任何文件。
+预防：从子仓库、frontend或external目录运行根项目备份时，Path始终使用解析后的项目绝对路径。
+[2026-09-20] [自检失败/自纠错] Browser Use 与 DeepSeek 的 URL 截取和结构化输出兼容
+现象：第一次真实 Agent 验收把网址后的中文任务说明并入 URL，导航报 ERR_CONNECTION_CLOSED；随后 DeepSeek 返回 400，提示不支持当前 response_format。
+根因：Browser Use 的直接打开 URL 功能把中英文混合任务误识别为完整网址；DeepSeek 的 OpenAI 兼容接口暂不支持 Browser Use 默认强制的结构化响应模式。
+失败做法：沿用 directly_open_url 默认值，并直接让 DeepSeek 接受默认 response_format。
+修正：Agent 设置 directly_open_url=False；ChatOpenAI 设置 add_schema_to_system_prompt=True 和 dont_force_structured_output=True。
+验证：第二次真实只读任务正常导航 https://example.com，2 步提取标题“Example Domain”并成功结束。
+预防：中文任务包含 URL 时禁用自动 URL 截取；接入 OpenAI 兼容模型前必须实际验证结构化输出能力，不能只以客户端构造成功判定兼容。
+[2026-09-20] [真实验收失败/自纠错] Browser Use超时必须清理Edge子进程树
+现象：猎聘真实小样本第一次达到11步后超时，只终止Python工作进程；第二次启动时Edge配置目录仍被残留进程占用，CDP启动失败。
+根因：subprocess.terminate只结束直接工作进程，没有回收其启动的Edge进程树。
+失败做法：超时和取消时只调用process.terminate/process.kill。
+修正：Windows统一使用taskkill /PID <worker> /T /F，只终止当前Browser Use工作树；人工核对并清理仅带.offerforge-liepin-profile参数的残留Edge，未触碰日常Edge。
+验证：残留隔离Edge数量为0；后续Worker能再次正常启动；完整测试215/215通过。
+预防：浏览器子进程型后台任务的超时、取消和异常必须按拥有关系清理整棵进程树，并验收残留进程数量。
+
+[2026-09-20] [真实能力边界] 城市UI选中不等于岗位结果城市正确
+现象：猎聘URL和页面均显示广州已选，但公开卡片仍出现深圳、上海、北京岗位；继续核对时DeepSeek返回402余额不足。
+根因：招聘网站可能在无精确结果时跨城推荐或保留个性化状态；模型余额属于独立上游限制。
+修正：适配器不信任页面筛选状态，保存前再次按岗位location严格核对城市；非目标城市全部丢弃；402翻译为明确的余额不足提示并停止，不自动重试。
+验证：模拟测试确认跨城、外域、缺字段和重复岗位均无法进入结果；真实测试未写入任何错误城市岗位。
+预防：站点筛选状态只能作为过程信号，最终数据必须逐条验证城市和来源域名；真实站点验收未得到合格入库结果前保持not_verified。
+
+[2026-09-24] [测试命令自纠错] 不应猜测不存在的unittest模块名
+现象：部署兼容补丁后的首轮专项命令包含tests.test_db_client，但仓库中没有该模块，导致1个导入错误；同一命令中的其余9项测试通过。
+根因：未先用rg确认测试文件名便直接猜测模块路径。
+修正：改用仓库既有的unittest discover入口完整执行测试。
+验证：Python编译通过，完整后端222/222通过，随后Vercel正式部署状态Ready。
+预防：运行专项测试前先用rg --files tests确认模块名；无法确认时直接使用项目已有的完整测试入口。
+
+[2026-11-24] [真机实测踩坑] 智谱 glm-5.3-flash 始终思考模式吃光 max_tokens 导致正文为空 JSON
+现象：切换至智谱 glm-5.3-flash 跑方案 A 实测时，Step 3 简历优化与 Step 4 JD 匹配分别耗时 42s/57s，返回空正文导致 JSON 解析失败（Expecting value: line 1 column 1）。
+根因：实测智谱接口证实 glm-5.3-flash 是始终思考（Always-Thinking）模型，不支持关闭思考（报错 1210：请使用 low、high 或 max）；即使极短 3 句请求默认思考链也消耗 1267 completion_tokens（3774 字符），导致原代码 1500/2200/4096 的 max_tokens 全被 reasoning_content 吃光，content 被截断为空字符串。
+失败做法：沿用非思考模型的 1500~4096 max_tokens 预算，且未设置思考强度。
+修正：在 modules/deepseek_client.py 新增 build_chat_completion_kwargs 统一组装器，对智谱 glm-5.* 自动注入 extra_body={"thinking": {"type": "enabled", "effort": "low"}} 并将 max_tokens 下限保障为 8192；在 deepseek_client、jd_analysis、jd_matcher 三处统一接入。
+验证：A/B 控制变量实测显示耗时从 20.9s 降至 12.0s；33/33 专项测试全部通过。
+预防：接入任何强制思考/推理型大模型时，必须用控制变量 A/B 实测 completion_tokens 与 reasoning_content 占比，为思考链+正文预留充足 max_tokens 并配置合理思考强度。
+
+
+[2026-11-24] [真机实测踩坑] 智谱 glm-4.7 关思考生成长中文 JSON 时偶发未转义引号导致 502（且仅尝试 1 次）
+现象：切换至 glm-4.7（thinking=disabled）跑 70/30 简历优化时，2800 字长中文 JSON 偶发报错 Expecting ',' delimiter: line 78 column 116，直接返回 502（attempts=1）；且测试智谱 glm-4.7-flashx/flash 时发现服务端免费/低价池严重排队（28~33s 或 429/1305）。
+根因：1）智谱 json_object 模式并非硬文法约束，长中文字符串中模型偶发混入未转义英文引号；2）原 resume_optimization.py 的 _extract_ai_json 位于重试循环之外，JSON 破损不会重试。
+失败做法：仅在提示词中写“只返回JSON”而不开启原生 json_object，且兜底逻辑只拦截 429/超时而不拦截破损 JSON。
+修正：在 modules/deepseek_client.py 的 build_chat_completion_kwargs 中对智谱 JSON 请求自动开启 response_format={"type": "json_object"}，并在 create_chat_completion_with_fallback 中增加 _is_valid_json_reply 校验——当主模型返回破损 JSON 时，自动无缝切换至备选模型 glm-5-turbo 重试一次。
+验证：tests/test_ai_client_resilience.py 9/9 通过（含破损 JSON 自动兜底单测）；隔离环境全新 03 号简历 7 步全链路一次全绿通过，总耗时 59.98s。
+预防：长文本结构化 JSON 输出除开启接口原生 JSON Mode 外，必须在统一 LLM 调用层对“语法破损”做一次自动兜底重试，绝不把偶发引号转义问题直接暴露成 502。
+
+### [2026-11-24] 多源采集城市过滤误杀 + 美团单复数字段暗坑（由全随机压力复测暴露）
+- **现象**：15 个免登录官方源同时开启时，原始拉取明明拿到了美团 8 条、国家24365 8 条、京东 2 条，最终入库却全部被清空，只剩国聘/牛客/51job。
+- **根因**：
+  1. `services/job_collection.py` 对所有来源统一调用了 `51job` 专用的行首锚定正则 `scraper._city_matches`（`^(?:广东省)?{city}...`），导致多城市拼接（如美团 `北京市 / 上海市 / 深圳市`）、省·市格式（如 24365 `广东·深圳`）及省级标注（如京东 `广东省（深圳同省）`）全部被误判为跨城并静默丢弃。
+  2. `MeituanAdapter` 传了单数 `"keyword"` 而非美团接口实际识别的复数 `"keywords"`，服务端忽略搜索词返回了全站随机岗位，随后被相关性过滤器清空。
+- **防错闸门**：
+  1. 新接入或重构多源采集后，必须同时打印对比「各源原始拉取数 `source_raw_counts`」与「最终落库数 `source_stats`」，一旦出现某源原始 >0 但最终归零，立刻逐段排查去重/城市/相关性过滤器。
+  2. 永远不要只用用户给的固定样例做复测，必须用隔离临时库跑随机城市（含非省会、非一线）、随机行业、随机薪资与随机限制条件的多场景实采压测。
+
+### [2026-11-24] 精准简历优化「预览 vs 覆盖写回」结构割裂与空覆盖谎报成功
+- **现象**：步骤 6 点击「覆盖简历」弹窗显示成功，但切回简历页与 SQLite 数据库查看，简历内容仍停留在覆盖前旧版。
+- **根因**：
+  1. `precision_optimize` 只喂给 AI `work_experience` 却要求输出 `optimized_projects`，前端覆盖时又固定传 `optimized_internships="[]"`，触发 `merge_grounded_optimization` 条目数不匹配与数字护栏把整段改写静默丢弃。
+  2. `overwrite_resume` 即使 0 字段变化仍返回 `ok=True`，前端吞掉 `optimization_warnings` 且覆盖后仅调用 `loadResumes()` 未刷新 `resumeDetail`/`tPreview`/`resumeVersions`。
+  3. `batch_score_jobs_json` 缓存仅核对姓名与文件名，未核对正文指纹，导致覆盖后重测继续吐旧分。
+- **防错闸门**：
+  1. 任何带“预览→确认写回”的 AI 改写链路，必须在预览生成阶段就先过同一套合并护栏，输出与落库同构的 `optimized_resume`（所见即所存），覆盖接口必须返回真实 `changed_fields` 清单。
+  2. 涉及简历内容变更的评分缓存，必须绑定正文内容指纹（SHA-256），不得仅凭文件名或姓名复用旧分。
+
+
+### [2026-11-26] [测试自纠错] `.env` 残留 `OFFERFORGE_PUBLIC_MODE=1` 抢先拦截本地 `51job` 参数校验单测
+- **现象**：全量单测首次运行时，`test_job_related_queries_service.py` 与 `test_job_sources.py` 中 3 个调用 `start_scrape(platforms="51job", ...)` 校验非法关联词/城市的用例返回 `PUBLIC_MODE_RESTRICTED` 而非 `INVALID_INPUT`。
+- **根因**：此前联调公网隧道时在 `.env` 写入了 `OFFERFORGE_PUBLIC_MODE=1`，而 `services/job_collection.py` 中公网浏览器禁用检查位于 `related_keywords` / 城市参数校验之前；上述旧单测未显式覆盖 `OFFERFORGE_PUBLIC_MODE=0`。另新单测初稿误猜 `modules.db_client.DEFAULT_DB_PATH`（真实常量名为 `DB_PATH`）。
+- **修正**：核对 `modules/db_client.py` 与 `services/job_matching.py` 真实符号后修正新单测 `patch("modules.db_client.DB_PATH", ...)`；在本地模式 `$env:OFFERFORGE_PUBLIC_MODE="0"` 下复跑全量单测 `253/253` 全绿通过（严格遵守板块隔离，不顺手改动无关采集文件，将该校验顺序记录待后续按需处理）。
+- **防错闸门**：编写 Mock/Patch 前必须先读目标模块顶部确认真实导出常量名；`.env` 含公网开关时，本地回归测试需明确区分 `OFFERFORGE_PUBLIC_MODE=0`（本地桌面模式）与 `1`（公网演示模式）。
+
+
+### [2026-11-26] [真机高危坑] Python `ThreadPoolExecutor` 不自动继承 `ContextVar` 导致多源并发采集秒报“已取消”
+- **现象**：开启浏览器会话级物理隔离后，启动 15 个免登录官方源并发采集时，第 1 毫秒立即退出并提示“岗位采集已由用户取消”（此前未修 `CollectionStopped` 时甚至直接抛出 `TypeError`）。
+- **根因**：`ThreadPoolExecutor.submit()` 不会自动复制父线程的 `contextvars.Context`。工作线程调用 `stop_check()` -> `get_stop_reason(task_id)` 时，`_WORKSPACE_ID` 为 `None`，转而查询根库 `data/offerforge.db` 查不到隔离库中的 `task_id`，触发 `if task is None: return "cancelled"`。
+- **修正**：在 `services/job_collection.py` 提前捕获 `active_db_path = get_active_db_path()` 绑定给 `stop_check`，并用 `pool.submit(contextvars.copy_context().run, collect_official_jobs, ...)` 透传上下文。
+- **防错闸门**：凡在 `ContextVar` 隔离架构下使用 `ThreadPoolExecutor` / `threading.Thread` 派生并发子线程，必须显式使用 `contextvars.copy_context().run` 透传上下文，或提前显式捕获并传入 `db_path` / `data_dir`；且必须补一条真实多源并发的隔离工作区单测。
+
+[2026-11-26 09:18] 猎聘浏览器采集失效三连坑与防错闸门：
+- 现象：启用猎聘采集时，前端无报错或超时且采集数量为 0。
+- 根因：1) 修改 `_worker()` 进度文案时误用未定义变量 `{city}`（应为 `{city_name}`），子进程一启动就 `NameError` 退出；2) 猎聘搜索页改用 `dq=` 城市参数，仅传 `city=` 返回全国岗位而被城市校验拦截；3) 猎聘改用混淆 CSS 类名（`_40108veEPX`），旧 `[class*="job-title"]` 等选择器全部失效，导致回退到 AI Agent 并在 75s 超时。
+- 防错闸门：修改独立子进程 worker 代码后，必须跑一次真实短超时 `collect_jobs()` 实测，不能只看单元测试或 `py_compile`；DOM 提取必须保留文本结构兜底以抵御 CSS 类名混淆。

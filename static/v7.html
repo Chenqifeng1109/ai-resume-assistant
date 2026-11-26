@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>OfferForge（AI求职工作流平台）</title><style>/* ============================================
+   style.css — 科技风 UI 样式
+   配色: 深空黑底 + 青霓虹 + 紫色渐变
+   ============================================ */
+
+/* ---------- 全局重置 ---------- */
+*, *::before, *::after {
+    margin: 0; padding: 0; box-sizing: border-box;
+}
+
+:root {
+    --bg-deep:   #08081a;
+    --bg-card:   rgba(12, 14, 28, 0.85);
+    --bg-panel:  rgba(18, 20, 42, 0.75);
+    --accent:    #00e5ff;
+    --accent2:   #7c4dff;
+    --accent3:   #ff4081;
+    --success:   #00e676;
+    --warning:   #ffab00;
+    --text:      #e0e0e0;
+    --text-dim:  #8892b0;
+    --border:    rgba(0, 229, 255, 0.15);
+    --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.3);
+    --glow-purple: 0 0 20px rgba(124, 77, 255, 0.3);
+    --radius:    12px;
+    --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+    backdrop-filter: blur(60px);
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---------- 粒子背景画布 ---------- */
+#particleCanvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    pointer-events: none;
+}
+
+/* ---------- 主布局 ---------- */
+#app {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+/* ---------- 顶部状态栏 ---------- */
+.topbar {
+    backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 24px;
+    background: var(--bg-panel);
+    position: relative;
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    flex-shrink: 0;
+}
+
+.topbar .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar .logo .icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+    box-shadow: var(--glow-cyan);
+}
+
+.topbar .logo h1 {
+    font-size: 24px;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+}
+
+.topbar .stats {
+    position: absolute;
+    left: 24px;
+    display: flex;
+    gap: 28px;
+}
+
+.home-btn {
+    cursor: pointer;
+    font-size: 18px;
+    padding: 6px 10px;
+    border-radius: 50%;
+    transition: all 0.2s;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+}
+.home-btn:hover {
+    background: rgba(0,229,255,0.1);
+    border-color: var(--accent);
+}
+.topbar .stats span {
+    text-align: center;
+    background: rgba(0,229,255,0.08);
+    border: 1px solid rgba(0,229,255,0.15);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 14px;
+}
+
+
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ---------- 主体三栏布局 ---------- */
+.main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ---------- 左侧步骤导航 ---------- */
+.sidebar {
+    width: 300px;
+    backdrop-filter: blur(20px);
+    flex-shrink: 0;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.steps-container {
+    padding: 16px 8px 16px 24px;
+    position: relative;
+}
+
+/* 时间线竖线 */
+.steps-container::before {
+    content: "";
+    position: absolute;
+    left: 12px;
+    top: 28px;
+    bottom: 28px;
+    width: 2px;
+    background: var(--border);
+    border-radius: 1px;
+}
+
+.steps-container::-webkit-scrollbar {
+    width: 4px;
+}
+.steps-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+.steps-container::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+/* ---------- 步骤卡片 ---------- */
+.step-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    margin: 5px 2px;
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid transparent;
+}
+.step-card:hover {
+    background: rgba(0,229,255,0.08);
+    border-color: rgba(0,229,255,0.3);
+    transform: translateX(4px);
+}
+.step-card.active {
+    background: rgba(0,229,255,0.1);
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(0,229,255,0.1);
+}
+.step-card.done {
+    opacity: 0.7;
+}
+.step-card-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.05);
+}
+.step-card.active .step-card-icon {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+}
+.step-card-info {
+    flex: 1;
+    min-width: 0;
+}
+.step-card-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.step-card.active .step-card-name {
+    color: var(--accent);
+}
+.step-card-detail {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.step-check {
+    color: var(--success);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* 时间线圆点 */
+.step-card::before {
+    content: "";
+    position: absolute;
+    left: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+    border: 2px solid var(--bg-panel);
+    z-index: 1;
+}
+.step-card.active::before {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+}
+.step-card.done::before {
+    background: var(--success);
+}
+
+
+
+/* ---------- 中央操作区 ---------- */
+.center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.center-header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.center-header h2 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.center-header .subtitle {
+    font-size: 14px;
+    color: var(--text-dim);
+}
+
+.center-body {}
+@keyframes flipIn{0%{opacity:0;transform:perspective(600px) rotateY(-90deg)}50%{opacity:0.5}100%{opacity:1;transform:perspective(600px) rotateY(0)}}
+.flip-in{animation:flipIn .7s cubic-bezier(0.16,1,0.3,1)}
+@keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+.slide-up{animation:slideUp .9s cubic-bezier(0.16,1,0.3,1)}
+@keyframes flipIn{0%{opacity:0;transform:perspective(600px) rotateY(-90deg)}50%{opacity:0.5}100%{opacity:1;transform:perspective(600px) rotateY(0)}}
+.flip-in{animation:flipIn .7s cubic-bezier(0.16,1,0.3,1)}
+@keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+.slide-up{animation:slideUp .9s cubic-bezier(0.16,1,0.3,1)}
+.center-body-outer {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    backdrop-filter: blur(10px);
+    transition: var(--transition);
+}
+
+.card:hover {
+    border-color: rgba(0, 229, 255, 0.3);
+    box-shadow: var(--glow-cyan);
+}
+
+.card h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--accent);
+    letter-spacing: 1px;
+}
+
+/* 进度环 */
+.progress-ring-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+}
+
+.progress-ring {
+    position: relative;
+    width: 160px; height: 160px;
+}
+
+.progress-ring svg {
+    transform: rotate(-90deg);
+}
+
+.progress-ring .bg-circle {
+    fill: none;
+    stroke: rgba(255,255,255,0.05);
+    stroke-width: 6;
+}
+
+.progress-ring .fg-circle {
+    fill: none;
+    stroke: url(#gradient);
+    stroke-width: 6;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s ease;
+}
+
+.progress-ring .percent {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 32px;
+    font-weight: 700;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    color: var(--accent);
+}
+
+.progress-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.progress-info .pi-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    min-width: 140px;
+}
+
+.progress-info .pi-row .pi-val {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* 按钮 */
+.btn {
+    padding: 10px 24px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    letter-spacing: 1px;
+}
+
+.btn:hover {
+    background: rgba(0, 229, 255, 0.1);
+    box-shadow: var(--glow-cyan);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #000;
+    border: none;
+    font-weight: 700;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 0 30px rgba(0, 229, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+
+
+/* ---------- 页脚 ---------- */
+
+/* ---------- 欢迎页 ---------- */
+.welcome-page{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center}
+.welcome-art{position:relative;width:200px;height:200px;margin-bottom:32px}
+.welcome-icon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;z-index:5;filter:drop-shadow(0 0 20px rgba(0,229,255,0.5))}
+.geo-orb{position:absolute;border-radius:50%;animation:float 6s ease-in-out infinite}
+.orb1{width:60px;height:60px;top:20px;left:20px;background:radial-gradient(circle,var(--accent),transparent);opacity:0.4;animation-delay:0s}
+.orb2{width:80px;height:80px;bottom:10px;right:10px;background:radial-gradient(circle,var(--accent2),transparent);opacity:0.4;animation-delay:-2s}
+.orb3{width:40px;height:40px;top:60px;right:30px;background:radial-gradient(circle,var(--accent3),transparent);opacity:0.3;animation-delay:-4s}
+.geo-ring{position:absolute;border-radius:50%;border:1px solid rgba(0,229,255,0.15);animation:spin 20s linear infinite}
+.ring1{width:160px;height:160px;top:20px;left:20px}
+.ring2{width:120px;height:120px;top:40px;left:40px;border-color:rgba(124,77,255,0.15);animation-direction:reverse;animation-duration:15s}
+.geo-grid{position:absolute;top:0;left:0;right:0;bottom:0;background-image:linear-gradient(rgba(0,229,255,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.04) 1px,transparent 1px);background-size:30px 30px;border-radius:50%;overflow:hidden}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.welcome-title{font-size:32px;font-weight:700;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px}
+.welcome-desc{font-size:15px;color:var(--text-dim);margin-bottom:32px}
+.welcome-stats{display:flex;gap:20px}
+.wstat{text-align:center;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:16px;padding:16px 24px;min-width:100px}
+.wstat-num{display:block;font-size:28px;font-weight:700;color:var(--accent);font-family:Cascadia Code,Consolas,monospace}
+.wstat-lbl{display:block;font-size:12px;color:var(--text-dim);margin-top:4px}
+
+.footer {
+    padding: 8px 24px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-dim);
+    text-align: center;
+    flex-shrink: 0;
+}
+.mtab{flex:1;text-align:center;padding:12px;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,0.02);color:var(--text-dim);border-radius:8px 8px 0 0;font-size:13px;transition:all 0.2s}.mtab.active{background:rgba(0,229,255,0.06);border-bottom-color:transparent}.mpanel{border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:12px}</style></head>
+<body>
+<canvas id="particleCanvas"></canvas>
+<div id="app">
+<header class="topbar"><div class="logo"><div class="icon">⚡</div><h1>OfferForge</h1></div><div class="stats" id="statsBar"></div></header>
+<div class="main-content">
+<aside class="sidebar"><div class="steps-container" id="stepsList"></div></aside>
+<main class="center"><div class="center-header"><h2 id="centerTitle">OfferForge（AI求职工作流平台）</h2><div class="subtitle" id="centerSubtitle">让你的求职效率翻倍</div></div><div class="center-body" id="centerBody"><div class="welcome-page"><div class="welcome-art"><div class="geo-orb orb1"></div><div class="geo-orb orb2"></div><div class="geo-orb orb3"></div><div class="geo-ring ring1"></div><div class="geo-ring ring2"></div><div class="geo-grid"></div><div class="welcome-icon">⚡</div></div><h2 class="welcome-title">欢迎回来</h2><p class="welcome-desc">选择左侧步骤开始你的智能求职之旅</p><div class="welcome-stats"><div class="wstat"><span class="wstat-num" id="wResumes">0</span><span class="wstat-lbl">📄 已解析简历</span></div><div class="wstat"><span class="wstat-num" id="wJobs">0</span><span class="wstat-lbl">🔍 采集岗位</span></div><div class="wstat"><span class="wstat-num" id="wDelivered">0</span><span class="wstat-lbl">📤 已投递</span></div></div></div></div></main>
+
+</div>
+<footer class="footer">OfferForge v7 · <span id="wsStatus">🟡 就绪</span></footer>
+</div>
+<script src="/static/v8.js?v="></script>
+</body>
+</html>

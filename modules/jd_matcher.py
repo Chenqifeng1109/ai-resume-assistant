@@ -4,13 +4,43 @@
 # ============================================
 import os, json, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import DEEPSEEK_API_KEY
-from openai import OpenAI
+from modules.deepseek_client import (
+    build_chat_completion_kwargs,
+    classify_deepseek_error,
+    create_chat_completion_with_fallback,
+    create_openai_client,
+    get_active_llm_model,
+    resolve_llm_config,
+)
 
-client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+
+class _LazyOpenAIClient:
+    """延迟初始化代理：导入模块时不校验密钥，真正发起 AI 请求时才按需创建客户端。"""
+
+    def __init__(self):
+        self._client = None
+        self._cached_sig = ("", "")
+
+    def _get_client(self):
+        cfg = resolve_llm_config()
+        sig = (cfg["api_key"], cfg["base_url"])
+        if self._client is None or self._cached_sig != sig:
+            self._client = create_openai_client()
+            self._cached_sig = sig
+        return self._client
+
+    def __getattr__(self, name: str):
+        return getattr(self._get_client(), name)
 
 
-def match_resume_to_jd(resume_data: dict, jd_text: str) -> dict:
+client = _LazyOpenAIClient()
+
+
+def match_resume_to_jd(
+    resume_data: dict,
+    jd_text: str,
+    jd_analysis: dict | None = None,
+) -> dict:
     """
     将简历与JD进行AI语义匹配，返回评分和详细分析
     大白话：把简历和招聘要求发给AI，让它打分并解释为什么匹配/不匹配
@@ -32,6 +62,12 @@ def match_resume_to_jd(resume_data: dict, jd_text: str) -> dict:
     for edu in resume_data.get("education", []):
         edu_text += f"- {edu.get('school','')} {edu.get('degree','')} {edu.get('major','')}\n"
     
+    structured_jd = json.dumps(
+        jd_analysis or {},
+        ensure_ascii=False,
+        indent=2,
+    )
+
     # 构建提示词
     prompt = f"""你是一个专业的HR和职业顾问。请根据以下简历和岗位描述(JD)，进行匹配度分析。
 
@@ -50,6 +86,14 @@ def match_resume_to_jd(resume_data: dict, jd_text: str) -> dict:
 ## 岗位描述 (JD)
 {jd_text[:3000]}
 
+## 已核对原文证据的JD结构化分析
+{structured_jd}
+
+评分规则：
+1. 优先使用结构化分析中的岗位职责、硬技能、软技能和硬性门槛进行匹配。
+2. hard_thresholds属于明确门槛；preferred_qualifications只是加分项，不得按硬门槛扣分。
+3. 不得把JD或简历原文没有的内容当作已确认事实。
+
 ---
 
 请按以下JSON格式返回分析结果（只返回JSON，不要其他内容）：
@@ -66,8 +110,9 @@ def match_resume_to_jd(resume_data: dict, jd_text: str) -> dict:
 """
 
     try:
-        response = client.chat.completions.create(
-            model="deepseek-chat",
+        response = create_chat_completion_with_fallback(
+            client,
+            model=get_active_llm_model(),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=1500,
@@ -90,9 +135,11 @@ def match_resume_to_jd(resume_data: dict, jd_text: str) -> dict:
             "raw": result_text[:500] if 'result_text' in dir() else ""
         }
     except Exception as e:
+        code, friendly = classify_deepseek_error(e)
         return {
             "ok": False,
-            "error": f"AI匹配失败: {str(e)[:200]}"
+            "error_code": code,
+            "error": friendly,
         }
 
 
@@ -115,8 +162,9 @@ JD: {jd_text[:2000]}
 {{"score":0-100,"brief":"一句话点评(15字)","reasons":["理由1","理由2"]}}"""
 
     try:
-        response = client.chat.completions.create(
-            model="deepseek-chat",
+        response = create_chat_completion_with_fallback(
+            client,
+            model=get_active_llm_model(),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=500,
@@ -129,4 +177,5 @@ JD: {jd_text[:2000]}
         result["ok"] = True
         return result
     except Exception as e:
-        return {"ok": False, "error": str(e)[:200]}
+        code, friendly = classify_deepseek_error(e)
+        return {"ok": False, "error_code": code, "error": friendly}

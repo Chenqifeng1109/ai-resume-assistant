@@ -1,4 +1,4 @@
-﻿# 环境变量（包含API密钥，绝对不能上传）
+# 环境变量（包含API密钥，绝对不能上传）
 .env
 
 # Python 缓存
@@ -41,3 +41,32 @@ resumes/*.pdf
 photos/*.jpg
 photos/*.jpeg
 photos/*.png
+.vercel
+.env*
+
+# 本地 SQLite 数据库与备份（隐私及运行期产物）
+data/*.db
+data/*.db-journal
+backups/
+*.bak
+_tmp_*
+
+
+# 桌面端打包产物与安装包（通过 GitHub Releases 分发，不进 Git 仓库）
+dist/
+build/
+*.exe
+external/
+
+# 运行期工作区、导出文件与临时测试文件
+data/workspaces/
+resumes/exports/
+logs/
+.codex_tmp/
+promo-video/
+reports/
+frontend/node_modules/
+d13_temp.txt
+d14_*.json
+d18_*.json
+table12_clean.json
